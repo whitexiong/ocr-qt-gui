@@ -1,0 +1,5 @@
+PySide6>=6.6
+Pillow>=10.0
+sqlalchemy>=2.0
+alembic>=1.13
+psutil>=5.9
