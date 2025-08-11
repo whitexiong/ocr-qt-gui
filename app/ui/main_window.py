@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QLabel, QHBoxLayout, QVBoxL
                                QGraphicsPixmapItem, QFileDialog, QMenuBar, QMenu, QPushButton, QStyledItemDelegate,
                                QAbstractItemView, QStyle, QSizePolicy)
 from PySide6.QtGui import QPixmap, QImage, QPainter, QPen, QColor, QFont, QPainterPath
-from PySide6.QtCore import Qt, QRectF, Signal, QSize
+from PySide6.QtCore import Qt, QRectF, Signal, QSize, QEvent
 from .fluent import set_theme, set_accent_color, PrimaryPushButton, PushButton, ComboBox
 
 class RoiGraphicsView(QGraphicsView):
@@ -13,15 +13,21 @@ class RoiGraphicsView(QGraphicsView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         self.pixmap_item = QGraphicsPixmapItem()
         self.scene.addItem(self.pixmap_item)
+        self.roi_enabled = False
         self._dragging = False
         self._start = None
         self._rect_item = None
+        self._placeholder_text: str | None = None
 
     def setImage(self, qimg: QImage):
+        # disable placeholder when showing an image
+        self._placeholder_text = None
         self.pixmap_item.setPixmap(QPixmap.fromImage(qimg))
         self.fitInView(self.pixmap_item, Qt.KeepAspectRatio)
 
@@ -32,6 +38,13 @@ class RoiGraphicsView(QGraphicsView):
             self._rect_item = None
         self.scene.update()
 
+    def setPlaceholder(self, text: str | None):
+        self._placeholder_text = text or None
+        if self._placeholder_text:
+            # ensure pixmap is cleared so only placeholder shows
+            self.pixmap_item.setPixmap(QPixmap())
+        self.viewport().update()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         # keep image fitted when the view size changes
@@ -40,7 +53,7 @@ class RoiGraphicsView(QGraphicsView):
             self.fitInView(self.pixmap_item, Qt.KeepAspectRatio)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if self.roi_enabled and event.button() == Qt.LeftButton:
             self._dragging = True
             self._start = event.position()
             if self._rect_item:
@@ -49,7 +62,7 @@ class RoiGraphicsView(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self._dragging and self._start is not None:
+        if self.roi_enabled and self._dragging and self._start is not None:
             end = event.position()
             rect = QRectF(self._start, end).normalized()
             if self._rect_item:
@@ -58,7 +71,7 @@ class RoiGraphicsView(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if self._dragging and event.button() == Qt.LeftButton and self._rect_item:
+        if self.roi_enabled and self._dragging and event.button() == Qt.LeftButton and self._rect_item:
             view_rect = self._rect_item.rect()
             pix_rect = self.pixmap_item.boundingRect()
             nx1 = (view_rect.left() - pix_rect.left()) / max(1.0, pix_rect.width())
@@ -70,6 +83,19 @@ class RoiGraphicsView(QGraphicsView):
         self._start = None
         super().mouseReleaseEvent(event)
 
+    def drawForeground(self, painter: QPainter, rect):
+        # Render a full-viewport placeholder overlay when requested
+        if self._placeholder_text:
+            painter.save()
+            painter.resetTransform()
+            vr = self.viewport().rect()
+            painter.fillRect(vr, QColor(30, 30, 30))
+            painter.setPen(QPen(QColor(200, 200, 200)))
+            painter.setFont(QFont('Microsoft YaHei', 20))
+            painter.drawText(vr, Qt.AlignCenter, self._placeholder_text)
+            painter.restore()
+        super().drawForeground(painter, rect)
+
 class MainWindow(QMainWindow):
     startCamera = Signal()
     stopCamera = Signal()
@@ -78,6 +104,10 @@ class MainWindow(QMainWindow):
     showOriginal = Signal()
     showProcessed = Signal()
     editText = Signal(int)
+    loadMore = Signal()
+    pageSizeChanged = Signal(int)
+    nextPage = Signal()
+    prevPage = Signal()
 
     def __init__(self):
         super().__init__()
@@ -127,22 +157,30 @@ class MainWindow(QMainWindow):
         self.results.setSpacing(6)
         self.results.setSelectionMode(QAbstractItemView.SingleSelection)
         self.results.setItemDelegate(ResultItemDelegate(self.results))
+        self.results.setUniformItemSizes(True)
+        # lazy-load on scroll bottom (disabled by default due to instability across platforms)
+        self._disable_scroll_trigger = True
+        self.results.verticalScrollBar().valueChanged.connect(self._on_results_scrolled)
+        # watch viewport resize to recalc page size
+        self.results.viewport().installEventFilter(self)
+        self._last_page_size = None
+
+        # Floating pager buttons overlayed on results (do not affect layout)
+        self.btn_prev_page = PrimaryPushButton('上一页', self.results)
+        self.btn_next_page = PrimaryPushButton('下一页', self.results)
+        for btn in (self.btn_prev_page, self.btn_next_page):
+            btn.setVisible(False)
+            btn.setFixedHeight(28)
+        self.btn_prev_page.clicked.connect(lambda: self.prevPage.emit())
+        self.btn_next_page.clicked.connect(lambda: self.nextPage.emit())
+        self._position_pager()
 
         left.addWidget(self.results)
 
-        # Result detail panel
-        detail = QVBoxLayout()
-        self.lbl_detail_text = QLabel('文本：')
-        self.lbl_detail_conf = QLabel('置信度：')
-        btn_row = QHBoxLayout()
-        self.btn_show_orig = PushButton('显示原图')
-        self.btn_show_proc = PushButton('显示处理图')
-        btn_row.addWidget(self.btn_show_orig)
-        btn_row.addWidget(self.btn_show_proc)
-        detail.addWidget(self.lbl_detail_text)
-        detail.addWidget(self.lbl_detail_conf)
-        detail.addLayout(btn_row)
-        left.addLayout(detail)
+        # Result detail panel (removed per requirement)
+        # keep placeholders but hide them; no labels on right side
+        self.lbl_detail_text = QLabel('')
+        self.lbl_detail_conf = QLabel('')
 
         # Right: camera view with ROI
         right = QVBoxLayout()
@@ -178,8 +216,7 @@ class MainWindow(QMainWindow):
         self.act_theme_auto.triggered.connect(lambda: self.apply_theme('auto'))
         self.act_theme_light.triggered.connect(lambda: self.apply_theme('light'))
         self.act_theme_dark.triggered.connect(lambda: self.apply_theme('dark'))
-        self.btn_show_orig.clicked.connect(self.showOriginal.emit)
-        self.btn_show_proc.clicked.connect(self.showProcessed.emit)
+        # moved actions into context menu only; no bottom buttons
 
         # initial UI state
         self.set_camera_running(False)
@@ -223,17 +260,8 @@ class MainWindow(QMainWindow):
         self.view.clearImage()
 
     def show_placeholder(self, text: str):
-        # Create a neutral placeholder image with centered text
-        w, h = 960, 540
-        img = QImage(w, h, QImage.Format_RGB32)
-        img.fill(QColor(30, 30, 30))
-        painter = QPainter(img)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(QPen(QColor(200, 200, 200)))
-        painter.setFont(QFont('Microsoft YaHei', 20))
-        painter.drawText(img.rect(), Qt.AlignCenter, text)
-        painter.end()
-        self.view.setImage(img)
+        # Overlay placeholder that fills the viewport and centers text
+        self.view.setPlaceholder(text)
 
     def set_page_label(self, page: int):
         self.lbl_page.setText(f'第 {page} 页')
@@ -266,11 +294,27 @@ class MainWindow(QMainWindow):
             proc_path = row[4] if len(row) >= 5 else None
             created_at = row[5] if len(row) >= 6 else ''
             item = QListWidgetItem()
-            item.setSizeHint(QSize(10, 76))
             item.setData(Qt.UserRole, int(rid))
             item.setData(Qt.UserRole + 1, text or '')
             item.setData(Qt.UserRole + 2, float(conf))
             # prefer processed image if exists
+            item.setData(Qt.UserRole + 3, (proc_path or img_path or ''))
+            item.setData(Qt.UserRole + 4, created_at)
+            self.results.addItem(item)
+
+    def append_results(self, rows: list[tuple]):
+        # rows are expected in descending id order (newest -> oldest)
+        for row in rows:
+            rid = row[0]
+            text = row[1]
+            conf = float(row[2] or 0.0)
+            img_path = row[3] if len(row) >= 4 else None
+            proc_path = row[4] if len(row) >= 5 else None
+            created_at = row[5] if len(row) >= 6 else ''
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, int(rid))
+            item.setData(Qt.UserRole + 1, text or '')
+            item.setData(Qt.UserRole + 2, float(conf))
             item.setData(Qt.UserRole + 3, (proc_path or img_path or ''))
             item.setData(Qt.UserRole + 4, created_at)
             self.results.addItem(item)
@@ -292,21 +336,106 @@ class MainWindow(QMainWindow):
         if not isinstance(rid, int):
             return
         menu = QMenu(self)
-        act_view_rec = menu.addAction('查看识别结果')
+        act_view_rec = menu.addAction('查看处理图')
+        act_view_orig = menu.addAction('查看原图')
         act_edit_text = menu.addAction('编辑识别文本')
         action = menu.exec(self.results.mapToGlobal(pos))
         if action == act_view_rec:
-            # reuse selection to show processed image by default
-            self.resultSelected.emit(rid)
+            # 设置当前项后，弹出查看处理图的对话框（由控制器处理）
+            it = self.results.findItems('', Qt.MatchContains)
+            # 确保当前项为选中项
+            row = self.results.row(item)
+            if row >= 0:
+                self.results.setCurrentRow(row)
+            # 触发显示处理图（控制器将以弹窗形式显示）
+            self.showProcessed.emit()
+        elif action == act_view_orig:
+            row = self.results.row(item)
+            if row >= 0:
+                self.results.setCurrentRow(row)
+            self.showOriginal.emit()
         elif action == act_edit_text:
             self.editText.emit(rid)
+
+    def _on_results_scrolled(self, value: int):
+        if getattr(self, '_disable_scroll_trigger', False):
+            return
+        bar = self.results.verticalScrollBar()
+        if not bar or not bar.isEnabled():
+            return
+        # 更稳健的触底判断：基于滚动条范围
+        # 只有当 value 接近 maximum 时触发，阈值 2 像素
+        try:
+            if bar.maximum() > 0 and (bar.maximum() - value) <= 2:
+                self.loadMore.emit()
+        except Exception:
+            pass
+
+    def estimate_page_size(self) -> int:
+        viewport_h = max(0, self.results.viewport().height())
+        # use delegate's known item height hint for our three-line layout
+        item_h = self._item_height_hint()
+        spacing = int(getattr(self.results, 'spacing', lambda: 6)()) if callable(getattr(self.results, 'spacing', None)) else 6
+        denom = max(1, item_h + spacing)
+        count = viewport_h // denom
+        return int(max(7, max(1, count)))
+
+    def _item_height_hint(self) -> int:
+        # keep in sync with ResultItemDelegate.sizeHint
+        return 10 + 20 + 4 + 22 + 6 + 20 + 10  # = 92
+
+    def _maybe_emit_page_size(self):
+        ps = self.estimate_page_size()
+        if ps != self._last_page_size:
+            self._last_page_size = ps
+            try:
+                self.pageSizeChanged.emit(ps)
+            except Exception:
+                pass
+
+    def eventFilter(self, obj, event):
+        if obj is self.results.viewport() and event.type() == QEvent.Resize:
+            self._maybe_emit_page_size()
+            self._position_pager()
+        return super().eventFilter(obj, event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._maybe_emit_page_size()
+        self._position_pager()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # ensure initial page size is computed after the widget is first shown
+        self._maybe_emit_page_size()
+        self._position_pager()
+
+    def _position_pager(self):
+        if not hasattr(self, 'btn_next_page') or not hasattr(self, 'btn_prev_page'):
+            return
+        vp = self.results.viewport().geometry()
+        margin = 10
+        btn_w = 96
+        # next button bottom-right
+        self.btn_next_page.resize(btn_w, self.btn_next_page.height())
+        nx = max(vp.left(), vp.right() - btn_w - margin)
+        ny = max(vp.top(), vp.bottom() - self.btn_next_page.height() - margin)
+        self.btn_next_page.move(nx, ny)
+        # prev button bottom-left
+        self.btn_prev_page.resize(btn_w, self.btn_prev_page.height())
+        px = vp.left() + margin
+        py = ny
+        self.btn_prev_page.move(px, py)
+
+    def set_pager(self, has_prev: bool, has_next: bool):
+        self.btn_prev_page.setVisible(bool(has_prev))
+        self.btn_next_page.setVisible(bool(has_next))
 
 
 class ResultItemDelegate(QStyledItemDelegate):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.radius = 10
-        self.thumb_size = 56
+        self.radius = 8
         self.margin = 10
 
     def paint(self, painter: QPainter, option, index):
@@ -334,41 +463,30 @@ class ResultItemDelegate(QStyledItemDelegate):
         # Data
         text = index.data(Qt.UserRole + 1) or ''
         conf = float(index.data(Qt.UserRole + 2) or 0.0)
-        img_path = index.data(Qt.UserRole + 3) or ''
         created_at = index.data(Qt.UserRole + 4) or ''
 
-        # Thumbnail (cache in role + 10)
-        thumb_rect = QRectF(rect.left() + self.margin, rect.top() + (rect.height() - self.thumb_size) / 2,
-                             self.thumb_size, self.thumb_size)
-        pix: QPixmap | None = index.data(Qt.UserRole + 10)
-        if pix is None and img_path:
-            p = QPixmap(img_path)
-            if not p.isNull():
-                p = p.scaled(self.thumb_size, self.thumb_size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-                index.model().setData(index, p, Qt.UserRole + 10)
-                pix = p
-        if isinstance(pix, QPixmap) and not pix.isNull():
-            clip = QPainterPath(); clip.addRoundedRect(thumb_rect, 6, 6)
-            painter.setClipPath(clip)
-            painter.drawPixmap(thumb_rect.toRect(), pix)
-            painter.setClipping(False)
-        else:
-            # placeholder thumb
-            ph = QColor(120, 120, 120, 40)
-            painter.fillRect(thumb_rect, ph)
+        # Texts in three lines: 时间、文本、置信度
+        left = rect.left() + self.margin
+        width = rect.width() - self.margin * 2
+        line_h = 20
+        y = rect.top() + 10
 
-        # Texts
-        text_left = int(thumb_rect.right() + 12)
-        title_rect = QRectF(text_left, rect.top() + 10, rect.width() - text_left - 12, 22)
-        sub_rect = QRectF(text_left, title_rect.bottom() + 4, title_rect.width(), 18)
+        painter.setPen(QPen(QColor(60, 60, 60)))
+        painter.setFont(QFont('Microsoft YaHei', 9))
+        painter.drawText(QRectF(left, y, width, line_h), Qt.TextSingleLine | Qt.AlignVCenter, created_at)
+        y += line_h + 4
+
         painter.setPen(QPen(QColor(30, 30, 30)))
         painter.setFont(QFont('Microsoft YaHei', 10, QFont.Bold))
-        painter.drawText(title_rect, Qt.TextSingleLine | Qt.AlignVCenter, text)
+        painter.drawText(QRectF(left, y, width, line_h + 2), Qt.TextSingleLine | Qt.AlignVCenter, text)
+        y += line_h + 6
+
         painter.setPen(QPen(QColor(90, 90, 90)))
         painter.setFont(QFont('Microsoft YaHei', 9))
-        painter.drawText(sub_rect, Qt.TextSingleLine | Qt.AlignVCenter, f'{created_at} · 置信度 {conf:.3f}')
+        painter.drawText(QRectF(left, y, width, line_h), Qt.TextSingleLine | Qt.AlignVCenter, f'置信度 {conf:.3f}')
 
         painter.restore()
 
     def sizeHint(self, option, index):
-        return QSize(option.rect.width(), 76)
+        # Height to fit three lines + paddings
+        return QSize(option.rect.width(), 10 + 20 + 4 + 22 + 6 + 20 + 10)

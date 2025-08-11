@@ -7,7 +7,7 @@ import time
 import threading
 from datetime import datetime
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 
 # ensure project root is importable
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -32,6 +32,7 @@ class Controller:
         self.win.startCamera.connect(self.start_camera)
         self.win.stopCamera.connect(self.stop_camera)
         self.win.captureNow.connect(self.capture_once)
+        # ROI 交互改为可切换，默认关闭（避免右键选框等行为）
         self.win.view.roiChanged.connect(self.on_roi_changed)
         # remove pagination wiring; use latest feed
         # import config action
@@ -40,6 +41,10 @@ class Controller:
         self.win.editText.connect(self.edit_result_text)
         self.win.showOriginal.connect(lambda: self.show_result_image(original=True))
         self.win.showProcessed.connect(lambda: self.show_result_image(original=False))
+        self.win.loadMore.connect(self.on_load_more)
+        self.win.pageSizeChanged.connect(self.on_page_size_changed)
+        self.win.nextPage.connect(self.go_next_page)
+        self.win.prevPage.connect(self.go_prev_page)
         # theme menu sync from cfg
         theme_mode = self.cfg.get('ui', {}).get('theme', 'auto')
         try:
@@ -60,15 +65,25 @@ class Controller:
         self.current_frame = None
         self.last_capture_ms = 0
         self.roi_norm = self.cfg['camera'].get('roi_norm')
-        self.page_size = 100
+        self.page_size = 6  # fixed page size per request
+        self.loaded_until_id = None  # track oldest loaded id for infinite append
+        self._is_loading_more = False
+        # explicit paging state (page by id ranges)
+        self._page_anchor_id = None  # newest id at top of current page
+        self._has_prev = False
+        self._has_next = False
         self.auto_timer = QTimer()
         self.auto_timer.timeout.connect(self.auto_capture_tick)
         if self.cfg['camera'].get('auto_capture', True):
             self.auto_timer.start(self.cfg['camera'].get('capture_interval_ms', 1000))
 
         self.refresh_devices()
+        # initial load will occur after first page size calculation
+        # but fallback to minimum to avoid empty startup
         self.load_latest()
         self.win.show()
+        # default: enable floating next button if more data exists
+        self._update_pager_buttons()
 
     def import_external_config(self):
         # User selected a JSON, parse preprocessing-related fields and merge into cfg['preprocess']
@@ -240,23 +255,19 @@ class Controller:
             session.close()
 
     def on_result_selected(self, rid: int):
+        # 仅更新右侧文本信息，不替换相机画面
         session = get_session()
         try:
             row = session.query(OcrResult).filter(OcrResult.id == rid).first()
             if not row:
                 return
-            self.win.set_result_detail(row.date_text or '', float(row.confidence or 0.0))
-            # default show processed if exists else original
-            path = row.processed_image_path or row.image_path
-            if path and os.path.exists(path):
-                img = cv2.imread(path)
-                if img is not None:
-                    self.win.show_frame(img)
+            # 按需求：右侧最下面的文本与置信度不显示
+            self.win.set_result_detail('', 0.0)
         finally:
             session.close()
 
     def show_result_image(self, original: bool):
-        # get selected item id
+        # 弹出图片查看器显示当前选中记录的图片（原图或处理图）
         item = self.win.results.currentItem()
         if not item:
             return
@@ -264,17 +275,37 @@ class Controller:
         if not isinstance(rid, int):
             return
         session = get_session()
+        path = None
         try:
             row = session.query(OcrResult).filter(OcrResult.id == rid).first()
             if not row:
                 return
             path = row.image_path if original else (row.processed_image_path or row.image_path)
-            if path and os.path.exists(path):
-                img = cv2.imread(path)
-                if img is not None:
-                    self.win.show_frame(img)
         finally:
             session.close()
+        if not path or not os.path.exists(path):
+            return
+        # 使用 OpenCV 读取并转换为 QImage，在对话框内展示
+        img = cv2.imread(path)
+        if img is None:
+            return
+        h, w = img.shape[:2]
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
+        from PySide6.QtGui import QImage, QPixmap
+        dlg = QDialog(self.win)
+        dlg.setWindowTitle('查看识别结果')
+        dlg.resize(min(960, w), min(720, h))
+        lay = QVBoxLayout(dlg)
+        lbl = QLabel()
+        lbl.setAlignment(Qt.AlignCenter)
+        qimg = QImage(img.data, w, h, w*3, QImage.Format_BGR888)
+        lbl.setPixmap(QPixmap.fromImage(qimg).scaled(lbl.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        lay.addWidget(lbl)
+        # 自适应缩放
+        def _on_resize():
+            lbl.setPixmap(QPixmap.fromImage(qimg).scaled(lbl.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        dlg.resizeEvent = lambda e: (QDialog.resizeEvent(dlg, e), _on_resize())
+        dlg.exec()
 
     def edit_result_text(self, rid: int):
         from PySide6.QtWidgets import QInputDialog
@@ -342,8 +373,131 @@ class Controller:
                 ts = r.created_at.strftime('%Y-%m-%d %H:%M:%S') if getattr(r, 'created_at', None) else ''
                 simple.append((r.id, r.date_text or '', float(r.confidence or 0.0), r.image_path, r.processed_image_path, ts))
             self.win.set_results(simple)
+            # update oldest id marker
+            if rows:
+                self.loaded_until_id = rows[-1].id
+                self._page_anchor_id = rows[0].id
+            else:
+                self.loaded_until_id = None
+                self._page_anchor_id = None
         finally:
             session.close()
+        self._recalc_has_prev_next()
+        self._update_pager_buttons()
+
+    def on_load_more(self):
+        # fetch next page older than current oldest id
+        if self.loaded_until_id is None or self._is_loading_more:
+            return
+        self._is_loading_more = True
+        session = get_session()
+        try:
+            size = int(self.page_size)
+            rows = (session.query(OcrResult)
+                    .filter(OcrResult.id < int(self.loaded_until_id))
+                    .order_by(OcrResult.id.desc())
+                    .limit(size)
+                    .all())
+            if not rows:
+                # no more data for infinite append
+                self.loaded_until_id = None
+                return
+            simple = []
+            for r in rows:
+                ts = r.created_at.strftime('%Y-%m-%d %H:%M:%S') if getattr(r, 'created_at', None) else ''
+                simple.append((r.id, r.date_text or '', float(r.confidence or 0.0), r.image_path, r.processed_image_path, ts))
+            self.win.append_results(simple)
+            self.loaded_until_id = rows[-1].id
+        finally:
+            session.close()
+            self._is_loading_more = False
+            self._recalc_has_prev_next()
+            self._update_pager_buttons()
+
+    def _recalc_has_prev_next(self):
+        session = get_session()
+        try:
+            newest = session.query(OcrResult).order_by(OcrResult.id.desc()).first()
+            oldest = session.query(OcrResult).order_by(OcrResult.id.asc()).first()
+            if not newest or not oldest:
+                self._has_prev = False
+                self._has_next = False
+                return
+            if self._page_anchor_id is None:
+                self._page_anchor_id = newest.id
+            # prev exists if there are ids greater than current anchor (newer)
+            self._has_prev = (self._page_anchor_id < newest.id)
+            # next exists if there are ids smaller than the last item in current page
+            # approximate: if loaded_until_id exists, there are more older items
+            self._has_next = bool(self.loaded_until_id)
+        finally:
+            session.close()
+
+    def _update_pager_buttons(self):
+        if hasattr(self.win, 'set_pager'):
+            self.win.set_pager(self._has_prev, self._has_next)
+
+    def go_next_page(self):
+        # load next page starting after current oldest id
+        if self.loaded_until_id is None:
+            return
+        session = get_session()
+        try:
+            size = int(self.page_size)
+            rows = (session.query(OcrResult)
+                    .filter(OcrResult.id < int(self.loaded_until_id))
+                    .order_by(OcrResult.id.desc())
+                    .limit(size)
+                    .all())
+            if not rows:
+                self.loaded_until_id = None
+                self._recalc_has_prev_next()
+                self._update_pager_buttons()
+                return
+            # replace list with new page
+            simple = []
+            for r in rows:
+                ts = r.created_at.strftime('%Y-%m-%d %H:%M:%S') if getattr(r, 'created_at', None) else ''
+                simple.append((r.id, r.date_text or '', float(r.confidence or 0.0), r.image_path, r.processed_image_path, ts))
+            self.win.set_results(simple)
+            self._page_anchor_id = rows[0].id
+            self.loaded_until_id = rows[-1].id
+        finally:
+            session.close()
+        self._recalc_has_prev_next()
+        self._update_pager_buttons()
+
+    def go_prev_page(self):
+        # load previous page newer than current anchor
+        if self._page_anchor_id is None:
+            return
+        session = get_session()
+        try:
+            size = int(self.page_size)
+            rows = (session.query(OcrResult)
+                    .filter(OcrResult.id > int(self._page_anchor_id))
+                    .order_by(OcrResult.id.desc())
+                    .limit(size)
+                    .all())
+            if not rows:
+                return
+            # replace list with new page (note: descending order)
+            simple = []
+            for r in rows:
+                ts = r.created_at.strftime('%Y-%m-%d %H:%M:%S') if getattr(r, 'created_at', None) else ''
+                simple.append((r.id, r.date_text or '', float(r.confidence or 0.0), r.image_path, r.processed_image_path, ts))
+            self.win.set_results(simple)
+            self._page_anchor_id = rows[0].id
+            # recompute loaded_until_id as current page oldest
+            self.loaded_until_id = rows[-1].id
+        finally:
+            session.close()
+        self._recalc_has_prev_next()
+        self._update_pager_buttons()
+
+    def on_page_size_changed(self, new_size: int):
+        # Fixed page size mode; ignore dynamic changes
+        return
 
 
 def main():
