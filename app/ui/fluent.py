@@ -63,6 +63,29 @@ def set_theme(mode: str = 'auto', root: QWidget | None = None):
         border-radius: {radius}px;
         padding: 6px 12px;
     }}
+    /* Secondary buttons: subtle style */
+    QPushButton[fluentSecondary="true"] {{
+        background: transparent;
+        border: {border}px solid rgba(0,0,0,0.10);
+    }}
+    QPushButton[fluentSecondary="true"]:hover {{ background: {hover}; }}
+    QPushButton[fluentSecondary="true"]:pressed {{ background: {press}; }}
+
+    /* Pager emphasis: tweak color for better contrast */
+    QPushButton[pager="true"][fluentSecondary="true"] {{
+        color: {('#d0e7ff' if dark else '#0b5cad')};
+        border-color: rgba(0,120,215,0.35);
+    }}
+    QPushButton[pager="true"][fluentSecondary="true"]:hover {{
+        background: rgba(0,120,215, {0.18 if not dark else 0.22});
+    }}
+    QPushButton[pager="true"][fluentSecondary="true"]:pressed {{
+        background: rgba(0,120,215, {0.28 if not dark else 0.32});
+    }}
+    QPushButton[pager="true"][fluentPrimary="true"] {{
+        /* slightly brighter primary for pager */
+        filter: brightness(1.05);
+    }}
     QPushButton:hover {{ background: {hover}; }}
     QPushButton:pressed {{ background: {press}; }}
     QComboBox {{
