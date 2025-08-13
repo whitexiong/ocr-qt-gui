@@ -109,6 +109,29 @@ def set_theme(mode: str = 'auto', root: QWidget | None = None):
         border: {border}px solid rgba(0,0,0,0.08);
         border-radius: {radius}px; padding: 4px 8px;
     }}
+    QDoubleSpinBox {{
+        background: {ctrl_bg};
+        border: {border}px solid rgba(0,0,0,0.08);
+        border-radius: {radius}px; padding: 4px 8px;
+    }}
+    QCheckBox {{ spacing: 8px; }}
+    QCheckBox::indicator {{
+        width: 16px; height: 16px;
+        border-radius: 3px;
+        border: {border}px solid rgba(0,0,0,0.25);
+        background: {ctrl_bg};
+    }}
+    QCheckBox::indicator:hover {{
+        border-color: rgba(0,0,0,0.35);
+    }}
+    QCheckBox::indicator:checked {{
+        background: rgba(0,120,215,0.95);
+        border-color: rgba(0,120,215,0.95);
+    }}
+    QCheckBox::indicator:disabled {{
+        background: rgba(0,0,0,0.06);
+        border-color: rgba(0,0,0,0.12);
+    }}
     QGraphicsView {{
         border: {border}px solid rgba(0,0,0,0.08);
         border-radius: {radius}px;

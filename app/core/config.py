@@ -45,7 +45,7 @@ DEFAULT_CONFIG = {
         'enable_preprocess': True,
         'convert_to_gray': True,
 
-        'binarization_enabled': True,
+        'binarization_enabled': False,
         'binarization_method': 'adaptive_mean',
         'binarization_threshold': 127,
 

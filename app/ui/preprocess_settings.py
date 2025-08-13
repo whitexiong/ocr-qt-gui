@@ -14,9 +14,9 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QSpinBox,
+    QDoubleSpinBox,
     QComboBox,
     QCheckBox,
-    QLineEdit,
     QPushButton,
     QMessageBox,
     QGroupBox,
@@ -59,15 +59,24 @@ class PreprocessSettingsDialog(QDialog):
         self.cb_gray = QCheckBox('转为灰度')
         pp_form.addRow(self.cb_gray)
 
-        # 主功能仅保留为开关
-        self.cb_bin = QCheckBox('启用二值化')
-        pp_form.addRow(self.cb_bin)
-
         self.cb_morph = QCheckBox('启用形态学')
         pp_form.addRow(self.cb_morph)
 
         self.cb_denoise = QCheckBox('启用去噪')
         pp_form.addRow(self.cb_denoise)
+
+        # 亮度/对比度
+        from PySide6.QtWidgets import QAbstractSpinBox
+        self.sp_brightness = QDoubleSpinBox(); self.sp_brightness.setRange(0.1, 3.0); self.sp_brightness.setSingleStep(0.1); self.sp_brightness.setDecimals(2); self.sp_brightness.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.sp_contrast = QDoubleSpinBox(); self.sp_contrast.setRange(0.1, 3.0); self.sp_contrast.setSingleStep(0.1); self.sp_contrast.setDecimals(2); self.sp_contrast.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        pp_form.addRow('亮度', self.sp_brightness)
+        pp_form.addRow('对比度', self.sp_contrast)
+
+        # 形态学参数
+        self.cmb_morph_type = QComboBox(); self.cmb_morph_type.addItems(['open', 'close', 'dilate', 'erode'])
+        self.sp_kernel = QSpinBox(); self.sp_kernel.setRange(1, 31); self.sp_kernel.setSingleStep(2); self.sp_kernel.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        pp_form.addRow('形态学类型', self.cmb_morph_type)
+        pp_form.addRow('核大小', self.sp_kernel)
 
         grp_pp.setLayout(pp_form)
         root.addWidget(grp_pp)
@@ -99,6 +108,8 @@ class PreprocessSettingsDialog(QDialog):
         self.btn_save.clicked.connect(self._on_save)
         self.btn_cancel.clicked.connect(self.reject)
         self.cb_enable.toggled.connect(self._on_enable_toggled)
+        # sub-feature enable/disable
+        self.cb_morph.toggled.connect(lambda c: self._set_widgets_enabled([self.cmb_morph_type, self.sp_kernel], c))
 
     def _load_from_config(self, cfg: dict):
         cam = cfg.get('camera', {})
@@ -108,19 +119,36 @@ class PreprocessSettingsDialog(QDialog):
         pp = cfg.get('preprocess', {})
         self.cb_enable.setChecked(bool(pp.get('enable_preprocess', True)))
         self.cb_gray.setChecked(bool(pp.get('convert_to_gray', True)))
-        self.cb_bin.setChecked(bool(pp.get('binarization_enabled', True)))
         self.cb_morph.setChecked(bool(pp.get('morphology_enabled', True)))
         self.cb_denoise.setChecked(bool(pp.get('denoising_enabled', True)))
+        # brightness/contrast
+        try:
+            self.sp_brightness.setValue(float(pp.get('brightness', 1.0)))
+        except Exception:
+            self.sp_brightness.setValue(1.0)
+        try:
+            self.sp_contrast.setValue(float(pp.get('contrast', 1.0)))
+        except Exception:
+            self.sp_contrast.setValue(1.0)
+        # morphology params
+        self.cmb_morph_type.setCurrentText(str(pp.get('morphology_type', 'open')))
+        self.sp_kernel.setValue(int(pp.get('kernel_size', 5)))
         # apply enable state on controls
         self._apply_controls_enabled(self.cb_enable.isChecked())
+        self._sync_sub_features_enabled()
 
     def _collect_preprocess_cfg(self) -> dict:
         # Build preprocess sub-config dict
         cfg = {
             'enable_preprocess': bool(self.cb_enable.isChecked()),
             'convert_to_gray': bool(self.cb_gray.isChecked()),
-            'binarization_enabled': bool(self.cb_bin.isChecked()),
+            'brightness': float(self.sp_brightness.value()),
+            'contrast': float(self.sp_contrast.value()),
+
             'morphology_enabled': bool(self.cb_morph.isChecked()),
+            'morphology_type': str(self.cmb_morph_type.currentText()),
+            'kernel_size': int(self.sp_kernel.value()),
+
             'denoising_enabled': bool(self.cb_denoise.isChecked()),
         }
         return cfg
@@ -128,17 +156,32 @@ class PreprocessSettingsDialog(QDialog):
     def _apply_controls_enabled(self, enabled: bool):
         widgets = [
             self.cb_gray,
-            self.cb_bin,
             self.cb_morph,
+            self.cmb_morph_type,
+            self.sp_kernel,
             self.cb_denoise,
+            self.sp_brightness,
+            self.sp_contrast,
         ]
         for w in widgets:
             w.setEnabled(bool(enabled))
 
     def _on_enable_toggled(self, checked: bool):
         self._apply_controls_enabled(bool(checked))
+        if checked:
+            self._sync_sub_features_enabled()
 
-    
+    def _set_widgets_enabled(self, widgets, enabled: bool):
+        for w in widgets:
+            try:
+                w.setEnabled(bool(enabled))
+            except Exception:
+                pass
+
+    def _sync_sub_features_enabled(self):
+        # reflect current master toggles to their parameter widgets
+        self._set_widgets_enabled([self.cmb_morph_type, self.sp_kernel], self.cb_morph.isChecked())
+        
 
     def _on_preview(self):
         if self._current_frame is None:
