@@ -45,3 +45,13 @@ qt_ocr_app/
 说明：
 - `qt_ocr_app.spec` 已包含 `lib/`、`app/ui`、`app/core`、`app/services`、`app_data` 目录。
 - 需隐藏控制台可将 spec 中 `console=True` 改为 `False`。
+
+## 转换 onnx 新建立一个环境
+
+```bash
+conda create -n p2o-nightly python=3.10 -y
+pip install --pre paddlepaddle -i https://www.paddlepaddle.org.cn/packages/nightly/cpu
+pip install paddle2onnx==2.0.2rc3 rapidocr onnxruntime
+paddle2onnx --model_dir "E:\workspace\jianxian-project\ocr\qt_ocr_app\lib\models\custom_det_model" --model_filename inference.json --params_filename inference.pdiparams --save_file "E:\workspace\jianxian-project\ocr\qt_ocr_app\lib\models\custom_det_model\det.onnx" --opset_version 13 --enable_auto_update_opset True --enable_onnx_checker True
+
+```
