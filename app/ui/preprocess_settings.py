@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QFormLayout,
     QLabel,
+    QLineEdit,
     QSpinBox,
     QDoubleSpinBox,
     QComboBox,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QMessageBox,
     QGroupBox,
+    QFileDialog,
 )
 
 from ..core.preprocess import apply_preprocess
@@ -87,6 +89,19 @@ class PreprocessSettingsDialog(QDialog):
         self.lbl_preview.setMinimumHeight(200)
         root.addWidget(self.lbl_preview)
 
+        # Save path group
+        grp_paths = QGroupBox('保存设置')
+        paths_form = QFormLayout()
+        path_row = QHBoxLayout()
+        self.le_snapshot_dir = QLineEdit()
+        self.btn_browse_snapshot = PushButton('浏览...')
+        self.btn_browse_snapshot.setProperty('fluentSecondary', True)
+        path_row.addWidget(self.le_snapshot_dir)
+        path_row.addWidget(self.btn_browse_snapshot)
+        paths_form.addRow('保存目录', path_row)
+        grp_paths.setLayout(paths_form)
+        root.addWidget(grp_paths)
+
         # Buttons
         btns = QHBoxLayout()
         self.btn_preview = PushButton('预览')
@@ -110,6 +125,7 @@ class PreprocessSettingsDialog(QDialog):
         self.cb_enable.toggled.connect(self._on_enable_toggled)
         # sub-feature enable/disable
         self.cb_morph.toggled.connect(lambda c: self._set_widgets_enabled([self.cmb_morph_type, self.sp_kernel], c))
+        self.btn_browse_snapshot.clicked.connect(self._on_browse_snapshot)
 
     def _load_from_config(self, cfg: dict):
         cam = cfg.get('camera', {})
@@ -136,6 +152,9 @@ class PreprocessSettingsDialog(QDialog):
         # apply enable state on controls
         self._apply_controls_enabled(self.cb_enable.isChecked())
         self._sync_sub_features_enabled()
+        # paths
+        paths = cfg.get('paths', {})
+        self.le_snapshot_dir.setText(str(paths.get('snapshot_dir', '')))
 
     def _collect_preprocess_cfg(self) -> dict:
         # Build preprocess sub-config dict
@@ -216,12 +235,27 @@ class PreprocessSettingsDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, '测试失败', f'OCR 接口不可用：{e}')
 
+    def _on_browse_snapshot(self):
+        init_dir = self.le_snapshot_dir.text().strip() or os.path.expanduser('~')
+        directory = QFileDialog.getExistingDirectory(self, '选择保存目录', init_dir)
+        if directory:
+            self.le_snapshot_dir.setText(directory)
+
     def _on_save(self):
         # Write back to config object
         cam = self._cfg.setdefault('camera', {})
         cam['width'] = int(self.sp_width.value())
         cam['height'] = int(self.sp_height.value())
         self._cfg['preprocess'] = self._collect_preprocess_cfg()
+        # save paths
+        paths = self._cfg.setdefault('paths', {})
+        snapshot_dir = self.le_snapshot_dir.text().strip()
+        if snapshot_dir:
+            try:
+                os.makedirs(snapshot_dir, exist_ok=True)
+            except Exception:
+                pass
+            paths['snapshot_dir'] = snapshot_dir
         self.accept()
 
 

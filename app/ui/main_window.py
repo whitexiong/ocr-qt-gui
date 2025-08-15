@@ -63,6 +63,8 @@ class MainWindow(QMainWindow):
         self.act_preprocess_enable = menu_view.addAction('启用预处理')
         self.act_preprocess_enable.setCheckable(True)
         self.act_open_settings = menu_view.addAction('预处理设置')
+        # Debug mode
+        self.act_open_debug = menu_view.addAction('调试模式')
         # Global preprocess toggle
         self.act_toggle_preprocess = menu_view.addAction('启用预处理')
         self.act_toggle_preprocess.setCheckable(True)
@@ -168,6 +170,7 @@ class MainWindow(QMainWindow):
         self.act_theme_light.triggered.connect(lambda: self.apply_theme('light'))
         self.act_theme_dark.triggered.connect(lambda: self.apply_theme('dark'))
         self.act_open_settings.triggered.connect(self.open_settings)
+        self.act_open_debug.triggered.connect(self.open_debug)
         self.act_preprocess_enable.triggered.connect(lambda checked: self.preprocessToggled.emit(bool(checked)))
         self.act_toggle_preprocess.toggled.connect(self._on_toggle_preprocess)
         # moved actions into context menu only; no bottom buttons
@@ -201,6 +204,11 @@ class MainWindow(QMainWindow):
         # signal-like callback for controller
         if hasattr(self, 'onOpenSettings') and callable(self.onOpenSettings):
             self.onOpenSettings()
+
+    def open_debug(self):
+        # signal-like callback for controller
+        if hasattr(self, 'onOpenDebug') and callable(self.onOpenDebug):
+            self.onOpenDebug()
 
     def _on_toggle_preprocess(self, checked: bool):
         # signal-like callback for controller

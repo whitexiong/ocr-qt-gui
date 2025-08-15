@@ -35,6 +35,7 @@ class AppController:
         self.win.nextPage.connect(self.go_next_page)
         self.win.prevPage.connect(self.go_prev_page)
         self.win.onOpenSettings = self.open_preprocess_settings
+        self.win.onOpenDebug = self.open_debug_dialog
         self.win.preprocessToggled.connect(self.on_preprocess_toggled)
         
         # theme
@@ -305,6 +306,15 @@ class AppController:
                 # restart only if previously enabled via UI start
             # Optionally auto-start after change if auto_capture enabled
             # Here we do nothing; user can start camera manually
+
+    def open_debug_dialog(self):
+        try:
+            from ..ui.debug_dialog import DebugDialog
+        except Exception as e:
+            QMessageBox.critical(self.win, '错误', f'无法打开调试模式：{e}')
+            return
+        dlg = DebugDialog(self.cfg, parent=self.win)
+        dlg.exec()
 
     # ---------- preprocess toggle ----------
     def on_preprocess_toggled(self, enabled: bool):

@@ -11,6 +11,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from PPOCR_api import GetOcrApi  # PaddleOCR-json wrapper
+from .ocr_pipeline import OCRPipeline
 
 
 class OCRWorker(QThread):
@@ -24,6 +25,7 @@ class OCRWorker(QThread):
         self._task_queue: list[dict] = []
         self._running = True
         self._ocr = None
+        self._pipeline = OCRPipeline(cfg)
 
     def _ensure_engine(self):
         if self._ocr is not None:
@@ -35,30 +37,23 @@ class OCRWorker(QThread):
             exe_path = os.path.join(_REPO_ROOT, 'lib', 'PaddleOCR-json.exe')
         if not os.path.isdir(models_path):
             models_path = os.path.join(_REPO_ROOT, 'lib', 'models')
+        # Engine arguments from config
+        arg_cfg = dict(self.cfg.get('paddleocr_json_args', {}) or {})
+        # allow overriding models_path via arguments
+        arg_models = arg_cfg.get('models_path') or None
+        if arg_models:
+            models_path = arg_models
         try:
-            self._ocr = GetOcrApi(exePath=exe_path, modelsPath=models_path, argument=None, ipcMode='pipe')
+            self._ocr = GetOcrApi(exePath=exe_path, modelsPath=models_path, argument=arg_cfg, ipcMode='pipe')
         except Exception as e:
             self.error.emit(f'加载PaddleOCR-json失败: {e}')
             self._running = False
 
     def _run_ocr_on_frame(self, frame) -> tuple[list, list]:
-        # Encode to jpg and call OCR
-        ok, buf = cv2.imencode('.jpg', frame)
-        if not ok:
-            raise RuntimeError('图像编码失败')
-        res = self._ocr.runBytes(bytes(buf))
-        if not isinstance(res, dict) or res.get('code') != 100:
-            # treat non-success as empty result
-            return [], []
-        dt_boxes = []
-        rec_res = []
-        for line in res.get('data', []) or []:
-            box = line.get('box')
-            text = line.get('text', '')
-            score = float(line.get('score', 0.0))
-            if box and isinstance(box, (list, tuple)) and len(box) == 4:
-                dt_boxes.append(box)
-            rec_res.append((text, score))
+        text, conf, boxes = self._pipeline.recognize(frame)
+        # Map to expected legacy outputs: boxes + per-piece rec (single entry with whole text)
+        dt_boxes = boxes or []
+        rec_res = [(text, float(conf) if conf is not None else 0.0)] if text else []
         return dt_boxes, rec_res
 
     def run(self):

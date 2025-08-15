@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+import sys
 from typing import Tuple
 from .db import get_session, AppConfig
 
@@ -9,6 +10,19 @@ from .db import get_session, AppConfig
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 DATA_DIR = os.path.join(PROJECT_ROOT, 'app_data')
 os.makedirs(DATA_DIR, exist_ok=True)
+
+
+def get_resource_path(relative_path):
+    """获取资源文件的绝对路径，兼容开发环境和打包后的路径"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的路径
+        base_path = sys._MEIPASS
+    else:
+        # 开发环境路径
+        base_path = PROJECT_ROOT
+    
+    return os.path.join(base_path, relative_path)
+
 
 DEFAULT_CONFIG = {
     'camera': {
@@ -27,15 +41,49 @@ DEFAULT_CONFIG = {
     },
     'paths': {
         # PaddleOCR-json exe and models (defaults point to project lib/)
-        'paddleocr_json_exe': os.path.abspath(os.path.join(PROJECT_ROOT, 'lib', 'PaddleOCR-json.exe')),
-        'paddleocr_models_path': os.path.abspath(os.path.join(PROJECT_ROOT, 'lib', 'models')),
+        'paddleocr_json_exe': get_resource_path('lib/PaddleOCR-json.exe'),
+        'paddleocr_models_path': get_resource_path('lib/models'),
 
         # Legacy fields kept for backward compatibility (unused now)
         'det_model_path': './inference/det_model',
         'rec_model_path': './inference/rec_model',
         'dict_path': './ppocr/utils/dict/custom_chinese_date_dict.txt',
 
-        'snapshot_dir': os.path.abspath(os.path.join(PROJECT_ROOT, 'snapshots'))
+        'snapshot_dir': get_resource_path('snapshots'),
+
+        # Optional custom Paddle models (Python pipeline), not used by PaddleOCR-json
+        'custom_det_model': get_resource_path('lib/models/custom_det_model'),
+        'custom_rec_model': get_resource_path('lib/models/custom_rec_model'),
+    },
+    'onnx_ocr': {
+        'enabled': True,
+        'image_path': get_resource_path('test.jpg'),
+        'det_onnx': get_resource_path('lib/models/custom_det_model/det.onnx'),
+        'rec_onnx': get_resource_path('lib/models/custom_rec_model/rec.onnx'),
+        'dict_path': get_resource_path('lib/models/dict_custom_chinese_date.txt'),
+        'vis_out_dir': get_resource_path('out'),
+        'rec_img_shape': [3, 48, 320],
+        'det_box_thresh': 0.6,
+        'det_thresh': 0.3,
+        'det_unclip_ratio': 1.5,
+        'fallback_threshold': 0.95
+    },
+    'websocket_ocr': {
+        'url': 'wss://olmocr.allen.ai/api/ws',
+        'prompt': '请只提取图中的生产日期，并按格式返回：生产日期：YYYY/MM/DD 合格。不要返回其他内容。',
+        'chunk_size': 65536,
+        'enabled': True
+    },
+    # Optional PaddleOCR-json arguments (passed to engine)
+    'paddleocr_json_args': {
+        # 'config_path': '',  # e.g. os.path.join(PROJECT_ROOT, 'lib', 'models', 'config.json')
+        # 'models_path': '',  # override models root; by default we use paths.paddleocr_models_path
+        'ensure_ascii': True,
+        'det': True,
+        'cls': False,
+        'use_angle_cls': False,
+        'enable_mkldnn': True,
+        'limit_side_len': 960,
     },
     'ui': {
         'theme': 'auto',   # 'auto' | 'light' | 'dark'
