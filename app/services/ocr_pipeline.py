@@ -22,7 +22,11 @@ from ..core.config import get_resource_path  # 导入路径处理函数
 try:
     # RapidOCR is optional; we gate by config
     from rapidocr import RapidOCR, EngineType, LangDet, LangRec, ModelType, OCRVersion  # type: ignore
-except Exception:
+    print("[DEBUG] RapidOCR 导入成功")
+except Exception as e:
+    print(f"[ERROR] RapidOCR 导入失败: {e}")
+    import traceback
+    traceback.print_exc()
     RapidOCR = None  # type: ignore
 
 

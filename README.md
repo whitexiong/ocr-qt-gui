@@ -40,7 +40,7 @@ qt_ocr_app/
 提示：首次启动会自动在 `app_data/` 下创建数据库；会检查 `lib/PaddleOCR-json.exe` 与 `lib/models`，不存在会回退到默认路径并写回配置。
 
 打包（Windows）
-- pyinstaller -y -n OCRCamera -F -w qt_ocr_app.spec
+pyinstaller qt_ocr_app.spec
 
 说明：
 - `qt_ocr_app.spec` 已包含 `lib/`、`app/ui`、`app/core`、`app/services`、`app_data` 目录。
@@ -53,5 +53,4 @@ conda create -n p2o-nightly python=3.10 -y
 pip install --pre paddlepaddle -i https://www.paddlepaddle.org.cn/packages/nightly/cpu
 pip install paddle2onnx==2.0.2rc3 rapidocr onnxruntime
 paddle2onnx --model_dir "E:\workspace\jianxian-project\ocr\qt_ocr_app\lib\models\custom_det_model" --model_filename inference.json --params_filename inference.pdiparams --save_file "E:\workspace\jianxian-project\ocr\qt_ocr_app\lib\models\custom_det_model\det.onnx" --opset_version 13 --enable_auto_update_opset True --enable_onnx_checker True
-
 ```

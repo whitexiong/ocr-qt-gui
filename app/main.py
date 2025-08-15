@@ -8,8 +8,8 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from .core.db import init_db
-from .controllers.app_controller import AppController
+from app.core.db import init_db
+from app.controllers.app_controller import AppController
 
 
 def main():

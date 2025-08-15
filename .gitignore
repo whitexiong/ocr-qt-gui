@@ -2,3 +2,5 @@
 /snapshots/
 .idea
 /out/
+/dist/
+/build/
