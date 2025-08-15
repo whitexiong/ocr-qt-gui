@@ -63,9 +63,9 @@ DEFAULT_CONFIG = {
         'dict_path': get_resource_path('lib/models/dict_custom_chinese_date.txt'),
         'vis_out_dir': get_resource_path('out'),
         'rec_img_shape': [3, 48, 320],
-        'det_box_thresh': 0.6,
-        'det_thresh': 0.3,
-        'det_unclip_ratio': 1.5,
+        'det_box_thresh': 0.3,
+        'det_thresh': 0.1,
+        'det_unclip_ratio': 2.0,
         'fallback_threshold': 0.95
     },
     'websocket_ocr': {

@@ -290,8 +290,8 @@ class MainWindow(QMainWindow):
             item.setData(Qt.UserRole, int(rid))
             item.setData(Qt.UserRole + 1, text)
             item.setData(Qt.UserRole + 2, float(conf))
-            # prefer processed image if exists
-            item.setData(Qt.UserRole + 3, (proc_path or img_path or ''))
+            # store both original and processed image paths
+            item.setData(Qt.UserRole + 3, f"{img_path or ''}|{proc_path or ''}" if img_path or proc_path else '')
             item.setData(Qt.UserRole + 4, created_at)
             self.results.addItem(item)
 
@@ -308,13 +308,29 @@ class MainWindow(QMainWindow):
             item.setData(Qt.UserRole, int(rid))
             item.setData(Qt.UserRole + 1, text)
             item.setData(Qt.UserRole + 2, float(conf))
-            item.setData(Qt.UserRole + 3, (proc_path or img_path or ''))
+            item.setData(Qt.UserRole + 3, f"{img_path or ''}|{proc_path or ''}" if img_path or proc_path else '')
             item.setData(Qt.UserRole + 4, created_at)
             self.results.addItem(item)
 
     def set_result_detail(self, text: str, confidence: float):
+        # 确保文本正确编码
+        if isinstance(text, bytes):
+            text = text.decode('utf-8', errors='ignore')
+        elif not isinstance(text, str):
+            text = str(text)
+        
         self.lbl_detail_text.setText(f'文本：{text or ""}')
         self.lbl_detail_conf.setText(f'置信度：{confidence:.3f}')
+        
+    def show_result_text(self, text: str, confidence: float):
+        """在状态栏显示识别结果"""
+        # 确保文本正确编码
+        if isinstance(text, bytes):
+            text = text.decode('utf-8', errors='ignore')
+        elif not isinstance(text, str):
+            text = str(text)
+        
+        self.statusBar().showMessage(f'识别结果: {text} (置信度: {confidence:.2f})', 5000)
 
     def _on_result_clicked(self, item: QListWidgetItem):
         rid = item.data(Qt.UserRole)
@@ -420,6 +436,23 @@ class MainWindow(QMainWindow):
         # Always visible; enable/disable per availability
         self.btn_prev_page.setEnabled(bool(has_prev))
         self.btn_next_page.setEnabled(bool(has_next))
+
+    def current_result(self):
+        """获取当前选中的结果项"""
+        item = self.results.currentItem()
+        if not item:
+            return None
+        rid = item.data(Qt.UserRole)
+        if not isinstance(rid, int):
+            return None
+        return {
+            'id': rid,
+            'date_text': item.data(Qt.UserRole + 1),
+            'confidence': item.data(Qt.UserRole + 2),
+            'image_path': item.data(Qt.UserRole + 3).split('|')[0] if item.data(Qt.UserRole + 3) else '',
+            'processed_image_path': item.data(Qt.UserRole + 3).split('|')[1] if item.data(Qt.UserRole + 3) and '|' in item.data(Qt.UserRole + 3) else '',
+            'created_at': item.data(Qt.UserRole + 4)
+        }
 
 
  

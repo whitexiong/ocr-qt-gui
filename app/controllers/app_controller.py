@@ -1,21 +1,27 @@
 from __future__ import annotations
 import os
 import cv2
-import time
+import numpy as np
 from datetime import datetime
 import math
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QImage
 import json
+from PIL import Image, ImageDraw, ImageFont
 
 from ..ui.main_window import MainWindow
 from ..services.camera import CameraWorker
-from ..services.ocr_worker import OCRWorker
 from ..core.db import get_session, OcrResult
 from ..core.config import load_config, save_config
 from ..core.preprocess import apply_preprocess
 from ..ui.image_viewer import ImageViewerDialog
+
+# RapidOCR导入
+try:
+    from rapidocr import RapidOCR, EngineType, LangDet, LangRec, ModelType, OCRVersion
+except ImportError:
+    RapidOCR = None
 
 class AppController:
     def __init__(self):
@@ -47,14 +53,7 @@ class AppController:
         self.win.onThemeChangedCallback = self.on_theme_changed
 
         self.camera = None
-        self.ocr = OCRWorker(self.cfg)
-        self.ocr.detectionDone.connect(self.on_detection)
-        self.ocr.recognitionDone.connect(self.on_recognition)
-        self.ocr.error.connect(self.on_error)
-        self.ocr.start()
-
         self.current_frame = None
-        self.last_capture_ms = 0
         self.roi_norm = self.cfg['camera'].get('roi_norm')
         self.page_size = 6
         # page-based pagination
@@ -64,10 +63,9 @@ class AppController:
         self._has_prev = False
         self._has_next = False
 
-        self.auto_timer = QTimer()
-        self.auto_timer.timeout.connect(self.auto_capture_tick)
-        if self.cfg['camera'].get('auto_capture', True):
-            self.auto_timer.start(self.cfg['camera'].get('capture_interval_ms', 1000))
+        # 初始化RapidOCR
+        self.ocr = None
+        self._init_rapidocr()
 
         self.refresh_devices()
         self.load_latest()
@@ -75,6 +73,159 @@ class AppController:
         self._update_pager_buttons()
         # init preprocess toggle state from config
         self.win.set_preprocess_enabled(bool(self.cfg.get('preprocess', {}).get('enable_preprocess', True)))
+
+    def _init_rapidocr(self):
+        """初始化RapidOCR"""
+        if RapidOCR is None:
+            QMessageBox.critical(self.win, '错误', 'RapidOCR未安装，请安装rapidocr-onnxruntime包')
+            return
+        
+        try:
+            # 获取模型路径
+            from ..core.config import get_resource_path
+            det_path = get_resource_path('lib/models/custom_det_model/det.onnx')
+            rec_path = get_resource_path('lib/models/custom_rec_model/rec.onnx')
+            dict_path = get_resource_path('lib/models/dict_custom_chinese_date.txt')
+            
+            # 配置RapidOCR参数（与test_camera_ocr.py保持一致）
+            params = {
+                'Global.use_cls': False,
+                'Det.engine_type': EngineType.ONNXRUNTIME,
+                'Rec.engine_type': EngineType.ONNXRUNTIME,
+                'Det.lang_type': LangDet.CH,
+                'Rec.lang_type': LangRec.CH,
+                'Det.model_type': ModelType.MOBILE,
+                'Rec.model_type': ModelType.MOBILE,
+                'Det.ocr_version': OCRVersion.PPOCRV5,
+                'Rec.ocr_version': OCRVersion.PPOCRV5,
+                'Det.box_thresh': 0.3,
+                'Det.thresh': 0.1,
+                'Det.unclip_ratio': 2.0,
+                'Rec.rec_img_shape': [3, 48, 320],
+            }
+            
+            # 只有当模型文件存在时才设置模型路径
+            if all(os.path.exists(p) for p in [det_path, rec_path, dict_path]):
+                params['Det.model_path'] = det_path
+                params['Rec.model_path'] = rec_path
+                params['Rec.rec_keys_path'] = dict_path
+                print("使用自定义模型")
+            else:
+                print("模型文件不存在，使用默认模型")
+            
+            self.ocr = RapidOCR(params=params)
+            print("RapidOCR初始化成功")
+        except Exception as e:
+            print(f"RapidOCR初始化失败: {e}")
+            # 使用默认配置
+            try:
+                self.ocr = RapidOCR()
+                print("使用默认RapidOCR配置")
+            except Exception as e2:
+                QMessageBox.critical(self.win, '错误', f'RapidOCR初始化完全失败: {e2}')
+                self.ocr = None
+    
+    def get_chinese_font(self, size=20):
+        """获取中文字体"""
+        try:
+            # 尝试使用系统字体
+            font_paths = [
+                "C:/Windows/Fonts/msyh.ttc",  # 微软雅黑
+                "C:/Windows/Fonts/simhei.ttf",  # 黑体
+                "C:/Windows/Fonts/simsun.ttc",  # 宋体
+            ]
+            
+            for font_path in font_paths:
+                if os.path.exists(font_path):
+                    return ImageFont.truetype(font_path, size)
+            
+            # 如果没有找到字体，使用默认字体
+            return ImageFont.load_default()
+        except Exception as e:
+            print(f"字体加载失败: {e}")
+            return ImageFont.load_default()
+    
+    def draw_chinese_text(self, image, boxes, texts, scores):
+        """在图像上绘制中文文本"""
+        # 将OpenCV图像转换为PIL图像
+        pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(pil_image)
+        
+        # 获取中文字体
+        font = self.get_chinese_font(20)
+        
+        for box, text, score in zip(boxes, texts, scores):
+            # 获取文本框的左上角坐标
+            x, y = int(box[0][0]), int(box[0][1])
+            
+            # 绘制文本和置信度
+            text_with_score = f"{text} ({score:.2f})"
+            
+            # 绘制文本背景
+            bbox = draw.textbbox((x, y-25), text_with_score, font=font)
+            draw.rectangle(bbox, fill=(0, 255, 0, 128))
+            
+            # 绘制文本
+            draw.text((x, y-25), text_with_score, font=font, fill=(0, 0, 0))
+        
+        # 将PIL图像转换回OpenCV格式
+        return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+    
+    def _process_with_rapidocr(self, image):
+        """使用RapidOCR处理图像"""
+        if self.ocr is None:
+            self.win.statusBar().showMessage("OCR未初始化")
+            return
+        
+        try:
+            self.win.statusBar().showMessage("正在识别...")
+            
+            # 执行OCR识别
+            result = self.ocr(image)
+            
+            if result is None:
+                self.win.statusBar().showMessage("识别失败")
+                return
+                
+            # 检查result.boxes是否存在且不为空
+            if not hasattr(result, 'boxes') or result.boxes is None or len(result.boxes) == 0:
+                self.win.statusBar().showMessage("未检测到文本")
+                return
+            
+            # 处理识别结果
+            boxes = result.boxes
+            texts = result.txts
+            scores = result.scores
+            
+            print(f"检测到 {len(boxes)} 个文本框:")
+            for i, (box, text, score) in enumerate(zip(boxes, texts, scores)):
+                # 确保文本正确编码
+                if isinstance(text, bytes):
+                    text = text.decode('utf-8', errors='ignore')
+                elif not isinstance(text, str):
+                    text = str(text)
+                
+                print(f"文本 {i+1}: {text} (置信度: {score:.3f})")
+            
+            # 在图像上绘制检测框
+            result_image = image.copy()
+            for box in boxes:
+                box = np.array(box, dtype=np.int32).reshape(-1, 1, 2)
+                cv2.polylines(result_image, [box], True, (0, 255, 0), 2)
+            
+            # 使用PIL绘制中文文本
+            result_image_with_text = self.draw_chinese_text(result_image, boxes, texts, scores)
+            
+            # 保存识别结果
+            self._save_recognition_result(result_image_with_text, texts, scores, boxes)
+            
+            self.win.statusBar().showMessage(f"识别完成，检测到 {len(boxes)} 个文本框")
+            
+        except Exception as e:
+            print(f"识别失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.win.statusBar().showMessage(f"识别失败: {str(e)}")
 
     # ---------- settings & theme ----------
     def on_theme_changed(self, mode: str):
@@ -127,61 +278,52 @@ class AppController:
             return
         frame = self.current_frame.copy()
         roi_frame = self._get_roi_frame(frame)
-        self.ocr.submit_detect(roi_frame)
+        self._process_with_rapidocr(roi_frame)
 
-    def on_detection(self, dt_boxes, rec_res):
-        frame = self.current_frame
-        if frame is None:
-            return
-        # Respect global preprocess enable switch
-        pp_cfg = self.cfg.get('preprocess', {}) or {}
-        if not pp_cfg.get('enable_preprocess', True):
-            proc_full = frame.copy()
-        else:
-            proc_full = apply_preprocess(frame, pp_cfg)
-        roi_view = self._extract_roi(proc_full)
 
-        snapshot_dir = self.cfg['paths']['snapshot_dir']
-        os.makedirs(snapshot_dir, exist_ok=True)
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-        orig_path = os.path.join(snapshot_dir, f'photo_{ts}.jpg')
-        proc_path = os.path.join(snapshot_dir, f'photo_{ts}_proc.jpg')
-        cv2.imwrite(orig_path, frame)
-        cv2.imwrite(proc_path, proc_full)
 
-        if dt_boxes is not None and len(dt_boxes) > 0:
-            import numpy as np
+
+
+    def _save_recognition_result(self, result_image, texts, scores, boxes):
+        """保存识别结果"""
+        try:
+            # 创建快照目录
+            snapshot_dir = self.cfg['paths']['snapshot_dir']
+            os.makedirs(snapshot_dir, exist_ok=True)
+            
+            # 生成时间戳
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+            result_path = os.path.join(snapshot_dir, f'result_{ts}.jpg')
+            
+            # 保存结果图像
+            cv2.imwrite(result_path, result_image)
+            
+            # 合并所有文本
+            combined_text = ' '.join(texts) if texts else ''
+            avg_confidence = sum(scores) / len(scores) if scores else 0.0
+            
+            # 转换检测框为JSON格式
             try:
-                areas = [cv2.contourArea(np.array(b, dtype=np.float32)) for b in dt_boxes]
-                idx = int(np.argmax(areas))
-                poly = np.array(dt_boxes[idx], dtype=np.float32)
-                x1 = int(max(0, min(poly[:,0]))); y1 = int(max(0, min(poly[:,1])))
-                x2 = int(min(roi_view.shape[1]-1, max(poly[:,0]))); y2 = int(min(roi_view.shape[0]-1, max(poly[:,1])))
-                crop = roi_view[y1:y2, x1:x2].copy()
+                import numpy as np
+                det_boxes_json = json.dumps([np.asarray(b).tolist() for b in (boxes or [])], ensure_ascii=False)
             except Exception:
-                crop = roi_view
-            self.ocr.submit_recognize(crop)
-            try:
-                import numpy as _np
-                det_boxes_json = json.dumps([_np.asarray(b).tolist() for b in (dt_boxes or [])], ensure_ascii=False)
-            except Exception:
-                det_boxes_json = None
-            self._pending_save = {'orig': orig_path, 'proc': proc_path, 'det_boxes_json': det_boxes_json}
-        else:
-            self.save_result('', 0.0, orig_path, proc_path, det_boxes_json='[]')
-
-    def on_recognition(self, rec_res):
-        if rec_res is None or len(rec_res) == 0:
-            text, conf = '', 0.0
-        else:
-            best = max(rec_res, key=lambda r: r[1] if isinstance(r, (list, tuple)) and len(r)>=2 else 0.0)
-            text, conf = best
-        pending = getattr(self, '_pending_save', None)
-        if pending:
-            rid = self.save_result(text, float(conf or 0.0), pending['orig'], pending['proc'], pending.get('det_boxes_json'))
+                det_boxes_json = '[]'
+            
+            # 保存到数据库
+            rid = self.save_result(combined_text, avg_confidence, result_path, result_path, det_boxes_json)
+            
+            # 更新界面
             self.load_latest()
-            self._pending_save = None
-
+            
+            # 在界面上显示识别结果
+            self.win.set_result_detail(combined_text, avg_confidence)
+            
+            return rid
+            
+        except Exception as e:
+            print(f"保存识别结果失败: {e}")
+            return None
+    
     def save_result(self, text: str, confidence: float, orig_path: str, proc_path: str, det_boxes_json: str = None):
         from ..core.db import get_session, OcrResult
         session = get_session()
@@ -259,31 +401,13 @@ class AppController:
         save_config(self.cfg)
 
     def _get_roi_frame(self, frame):
-        if not self.roi_norm:
-            return frame
-        h, w = frame.shape[:2]
-        x1 = int(self.roi_norm[0] * w); y1 = int(self.roi_norm[1] * h)
-        x2 = int(self.roi_norm[2] * w); y2 = int(self.roi_norm[3] * h)
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(w, x2), min(h, y2)
-        if x2 - x1 <= 2 or y2 - y1 <= 2:
-            return frame
-        return frame[y1:y2, x1:x2].copy()
+        # 不进行ROI裁剪，直接返回原始帧
+        return frame
 
     def _extract_roi(self, frame):
         return self._get_roi_frame(frame)
 
-    def auto_capture_tick(self):
-        if not self.cfg['camera'].get('auto_capture', True):
-            return
-        if self.current_frame is None:
-            return
-        now = time.time() * 1000
-        if now - self.last_capture_ms < self.cfg['camera'].get('capture_interval_ms', 1000):
-            return
-        self.last_capture_ms = now
-        roi_frame = self._get_roi_frame(self.current_frame.copy())
-        self.ocr.submit_detect(roi_frame)
+
 
     # ---------- settings dialog ----------
     def open_preprocess_settings(self):
