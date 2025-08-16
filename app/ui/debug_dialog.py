@@ -78,18 +78,15 @@ class DebugDialog(QDialog):
         grp_models.setVisible(False)
         root.addWidget(grp_models)
 
-        # Strategy group (shown to users for packaged EXE)
-        grp_strategy = QGroupBox('识别策略（适用于打包）')
+        # ONNX Configuration group (simplified)
+        grp_onnx_config = QGroupBox('ONNX 配置')
         fm2 = QFormLayout()
-        self.cb_strategy = QComboBox()
-        self.cb_strategy.addItems(['ONNX → OCR-json → OLMOCR', 'OCR-json → OLMOCR'])
         self.spin_thresh = QDoubleSpinBox(); self.spin_thresh.setRange(0.0, 1.0); self.spin_thresh.setSingleStep(0.01); self.spin_thresh.setDecimals(2)
         self.chk_olmocr = QCheckBox('启用 OLMOCR 兜底识别')
-        fm2.addRow('策略', self.cb_strategy)
         fm2.addRow('置信度阈值', self.spin_thresh)
         fm2.addRow('', self.chk_olmocr)
-        grp_strategy.setLayout(fm2)
-        root.addWidget(grp_strategy)
+        grp_onnx_config.setLayout(fm2)
+        root.addWidget(grp_onnx_config)
 
         # Center: preview label
         self.lbl_preview = QLabel('预览区')
@@ -129,17 +126,15 @@ class DebugDialog(QDialog):
         self.btn_close.clicked.connect(self.reject)
 
         # init fields from cfg
-        paths = self._cfg.get('paths', {}) or {}
         onnx_cfg = self._cfg.get('onnx_ocr', {}) or {}
-        ws_cfg = self._cfg.get('websocket_ocr', {}) or {}
-        self.le_det.setText(str(paths.get('custom_det_model', '') or ''))
-        self.le_rec.setText(str(paths.get('custom_rec_model', '') or ''))
+        self.le_det.setText('')  # 移除自定义模型路径
+        self.le_rec.setText('')  # 移除自定义模型路径
         self.le_det_onnx.setText(str(onnx_cfg.get('det_onnx', '') or ''))
         self.le_rec_onnx.setText(str(onnx_cfg.get('rec_onnx', '') or ''))
         self.le_dict.setText(str(onnx_cfg.get('dict_path', '') or ''))
-        self.cb_strategy.setCurrentIndex(0 if bool(onnx_cfg.get('enabled', True)) else 1)
+        # 直接使用ONNX策略，不需要策略选择
         self.spin_thresh.setValue(float(onnx_cfg.get('fallback_threshold', 0.95)))
-        self.chk_olmocr.setChecked(bool(ws_cfg.get('enabled', True)))
+        self.chk_olmocr.setChecked(False)  # 移除websocket OCR功能
         self._pipeline = OCRPipeline(self._cfg)
 
     def _on_browse(self):
@@ -175,12 +170,10 @@ class DebugDialog(QDialog):
     def _apply_runtime_options(self):
         cfg = dict(self._cfg)
         onnx_cfg = dict((cfg.get('onnx_ocr', {}) or {}))
-        ws_cfg = dict((cfg.get('websocket_ocr', {}) or {}))
-        onnx_cfg['enabled'] = (self.cb_strategy.currentIndex() == 0)
+        # 直接启用ONNX策略
+        onnx_cfg['enabled'] = True
         onnx_cfg['fallback_threshold'] = float(self.spin_thresh.value())
-        ws_cfg['enabled'] = bool(self.chk_olmocr.isChecked())
         cfg['onnx_ocr'] = onnx_cfg
-        cfg['websocket_ocr'] = ws_cfg
         self._pipeline = OCRPipeline(cfg)
         return cfg
 
@@ -235,7 +228,7 @@ class DebugDialog(QDialog):
         self._apply_runtime_options()
         text, conf, boxes = self._pipeline.recognize(img)
         self._boxes = self._sort_boxes_left_to_right(boxes or [])
-        self._append_log(f'检测到 {len(self._boxes)} 个矩形（{self.cb_strategy.currentText()}）')
+        self._append_log(f'检测到 {len(self._boxes)} 个矩形（ONNX策略）')
         if recognize:
             self._append_log(f'识别文本：{text or ""}  (min置信度：{conf:.2f})')
             self._update_preview(text or '')

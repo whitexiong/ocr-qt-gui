@@ -36,6 +36,9 @@ def draw_chinese_text(image, boxes, texts, scores):
     # 获取中文字体
     font = get_chinese_font(20)
     
+    # 使用白色文字（测试脚本中默认使用白色以便在各种背景下可见）
+    text_color = (255, 255, 255)
+    
     for box, text, score in zip(boxes, texts, scores):
         # 获取文本框的左上角坐标
         x, y = int(box[0][0]), int(box[0][1])
@@ -47,8 +50,8 @@ def draw_chinese_text(image, boxes, texts, scores):
         bbox = draw.textbbox((x, y-25), text_with_score, font=font)
         draw.rectangle(bbox, fill=(0, 255, 0, 128))
         
-        # 绘制文本
-        draw.text((x, y-25), text_with_score, font=font, fill=(0, 0, 0))
+        # 绘制文本，使用白色以便在各种背景下可见
+        draw.text((x, y-25), text_with_score, font=font, fill=text_color)
     
     # 将PIL图像转换回OpenCV格式
     return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)

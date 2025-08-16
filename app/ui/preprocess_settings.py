@@ -61,8 +61,9 @@ class PreprocessSettingsDialog(QDialog):
         self.cb_gray = QCheckBox('转为灰度')
         pp_form.addRow(self.cb_gray)
 
-        self.cb_morph = QCheckBox('启用形态学')
-        pp_form.addRow(self.cb_morph)
+        # 移除形态学复选框（概念复杂，用户不易理解）
+        # self.cb_morph = QCheckBox('启用形态学')
+        # pp_form.addRow(self.cb_morph)
 
         self.cb_denoise = QCheckBox('启用去噪')
         pp_form.addRow(self.cb_denoise)
@@ -74,11 +75,11 @@ class PreprocessSettingsDialog(QDialog):
         pp_form.addRow('亮度', self.sp_brightness)
         pp_form.addRow('对比度', self.sp_contrast)
 
-        # 形态学参数
-        self.cmb_morph_type = QComboBox(); self.cmb_morph_type.addItems(['open', 'close', 'dilate', 'erode'])
-        self.sp_kernel = QSpinBox(); self.sp_kernel.setRange(1, 31); self.sp_kernel.setSingleStep(2); self.sp_kernel.setButtonSymbols(QAbstractSpinBox.NoButtons)
-        pp_form.addRow('形态学类型', self.cmb_morph_type)
-        pp_form.addRow('核大小', self.sp_kernel)
+        # 移除形态学参数（概念复杂，用户不易理解）
+        # self.cmb_morph_type = QComboBox(); self.cmb_morph_type.addItems(['open', 'close', 'dilate', 'erode'])
+        # self.sp_kernel = QSpinBox(); self.sp_kernel.setRange(1, 31); self.sp_kernel.setSingleStep(2); self.sp_kernel.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        # pp_form.addRow('形态学类型', self.cmb_morph_type)
+        # pp_form.addRow('核大小', self.sp_kernel)
 
         grp_pp.setLayout(pp_form)
         root.addWidget(grp_pp)
@@ -106,12 +107,12 @@ class PreprocessSettingsDialog(QDialog):
         btns = QHBoxLayout()
         self.btn_preview = PushButton('预览')
         self.btn_preview.setProperty('fluentSecondary', True)
-        self.btn_test_ocr = PushButton('测试 OCR 接口')
-        self.btn_test_ocr.setProperty('fluentSecondary', True)
+        # 移除测试OCR接口按钮
+        # self.btn_test_ocr = PushButton('测试 OCR 接口')
+        # self.btn_test_ocr.setProperty('fluentSecondary', True)
         self.btn_save = PrimaryPushButton('保存')
         self.btn_cancel = PushButton('取消')
-        for b in (self.btn_preview, self.btn_test_ocr):
-            btns.addWidget(b)
+        btns.addWidget(self.btn_preview)
         btns.addStretch(1)
         for b in (self.btn_save, self.btn_cancel):
             btns.addWidget(b)
@@ -119,12 +120,13 @@ class PreprocessSettingsDialog(QDialog):
 
         # Connects
         self.btn_preview.clicked.connect(self._on_preview)
-        self.btn_test_ocr.clicked.connect(self._on_test_ocr)
+        # 移除测试OCR接口按钮的信号连接
+        # self.btn_test_ocr.clicked.connect(self._on_test_ocr)
         self.btn_save.clicked.connect(self._on_save)
         self.btn_cancel.clicked.connect(self.reject)
         self.cb_enable.toggled.connect(self._on_enable_toggled)
-        # sub-feature enable/disable
-        self.cb_morph.toggled.connect(lambda c: self._set_widgets_enabled([self.cmb_morph_type, self.sp_kernel], c))
+        # 移除形态学相关的控件启用/禁用逻辑
+        # self.cb_morph.toggled.connect(lambda c: self._set_widgets_enabled([self.cmb_morph_type, self.sp_kernel], c))
         self.btn_browse_snapshot.clicked.connect(self._on_browse_snapshot)
 
     def _load_from_config(self, cfg: dict):
@@ -135,7 +137,8 @@ class PreprocessSettingsDialog(QDialog):
         pp = cfg.get('preprocess', {})
         self.cb_enable.setChecked(bool(pp.get('enable_preprocess', True)))
         self.cb_gray.setChecked(bool(pp.get('convert_to_gray', True)))
-        self.cb_morph.setChecked(bool(pp.get('morphology_enabled', True)))
+        # 移除形态学相关配置加载
+        # self.cb_morph.setChecked(bool(pp.get('morphology_enabled', True)))
         self.cb_denoise.setChecked(bool(pp.get('denoising_enabled', True)))
         # brightness/contrast
         try:
@@ -146,15 +149,16 @@ class PreprocessSettingsDialog(QDialog):
             self.sp_contrast.setValue(float(pp.get('contrast', 1.0)))
         except Exception:
             self.sp_contrast.setValue(1.0)
-        # morphology params
-        self.cmb_morph_type.setCurrentText(str(pp.get('morphology_type', 'open')))
-        self.sp_kernel.setValue(int(pp.get('kernel_size', 5)))
+        # 移除形态学参数加载
+        # self.cmb_morph_type.setCurrentText(str(pp.get('morphology_type', 'open')))
+        # self.sp_kernel.setValue(int(pp.get('kernel_size', 5)))
         # apply enable state on controls
         self._apply_controls_enabled(self.cb_enable.isChecked())
         self._sync_sub_features_enabled()
-        # paths
-        paths = cfg.get('paths', {})
-        self.le_snapshot_dir.setText(str(paths.get('snapshot_dir', '')))
+        # paths - 使用用户数据目录下的快照目录
+        from ..core.config import get_user_data_path
+        default_snapshot_dir = get_user_data_path('snapshots')
+        self.le_snapshot_dir.setText(default_snapshot_dir)
 
     def _collect_preprocess_cfg(self) -> dict:
         # Build preprocess sub-config dict
@@ -164,9 +168,10 @@ class PreprocessSettingsDialog(QDialog):
             'brightness': float(self.sp_brightness.value()),
             'contrast': float(self.sp_contrast.value()),
 
-            'morphology_enabled': bool(self.cb_morph.isChecked()),
-            'morphology_type': str(self.cmb_morph_type.currentText()),
-            'kernel_size': int(self.sp_kernel.value()),
+            # 移除形态学相关配置
+            # 'morphology_enabled': bool(self.cb_morph.isChecked()),
+            # 'morphology_type': str(self.cmb_morph_type.currentText()),
+            # 'kernel_size': int(self.sp_kernel.value()),
 
             'denoising_enabled': bool(self.cb_denoise.isChecked()),
         }
@@ -175,9 +180,10 @@ class PreprocessSettingsDialog(QDialog):
     def _apply_controls_enabled(self, enabled: bool):
         widgets = [
             self.cb_gray,
-            self.cb_morph,
-            self.cmb_morph_type,
-            self.sp_kernel,
+            # 移除形态学相关控件
+            # self.cb_morph,
+            # self.cmb_morph_type,
+            # self.sp_kernel,
             self.cb_denoise,
             self.sp_brightness,
             self.sp_contrast,
@@ -198,8 +204,9 @@ class PreprocessSettingsDialog(QDialog):
                 pass
 
     def _sync_sub_features_enabled(self):
-        # reflect current master toggles to their parameter widgets
-        self._set_widgets_enabled([self.cmb_morph_type, self.sp_kernel], self.cb_morph.isChecked())
+        # 移除形态学相关的子功能启用逻辑
+        # self._set_widgets_enabled([self.cmb_morph_type, self.sp_kernel], self.cb_morph.isChecked())
+        pass
         
 
     def _on_preview(self):
@@ -217,23 +224,24 @@ class PreprocessSettingsDialog(QDialog):
         pix = QPixmap.fromImage(qimg).scaled(self.lbl_preview.width(), self.lbl_preview.height(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.lbl_preview.setPixmap(pix)
 
-    def _on_test_ocr(self):
-        # Mimic OCRWorker import behavior
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-        if repo_root not in sys.path:
-            sys.path.insert(0, repo_root)
-        try:
-            from PPOCR_api import GetOcrApi
-            paths = self._cfg.get('paths', {})
-            exe_path = paths.get('paddleocr_json_exe')
-            models_path = paths.get('paddleocr_models_path')
-            if not os.path.isfile(exe_path) or not os.path.isdir(models_path):
-                raise RuntimeError('OCR 程序或模型目录不存在')
-            ocr = GetOcrApi(exePath=exe_path, modelsPath=models_path, argument=None, ipcMode='pipe')
-            del ocr
-            QMessageBox.information(self, '测试结果', 'OCR 接口可用。')
-        except Exception as e:
-            QMessageBox.warning(self, '测试失败', f'OCR 接口不可用：{e}')
+    # 移除测试OCR接口的方法
+    # def _on_test_ocr(self):
+    #     # Mimic OCRWorker import behavior
+    #     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    #     if repo_root not in sys.path:
+    #         sys.path.insert(0, repo_root)
+    #     try:
+    #         from PPOCR_api import GetOcrApi
+    #         paths = self._cfg.get('paths', {})
+    #         exe_path = paths.get('paddleocr_json_exe')
+    #         models_path = paths.get('paddleocr_models_path')
+    #         if not os.path.isfile(exe_path) or not os.path.isdir(models_path):
+    #             raise RuntimeError('OCR 程序或模型目录不存在')
+    #         ocr = GetOcrApi(exePath=exe_path, modelsPath=models_path, argument=None, ipcMode='pipe')
+    #         del ocr
+    #         QMessageBox.information(self, '测试结果', 'OCR 接口可用。')
+    #     except Exception as e:
+    #         QMessageBox.warning(self, '测试失败', f'OCR 接口不可用：{e}')
 
     def _on_browse_snapshot(self):
         init_dir = self.le_snapshot_dir.text().strip() or os.path.expanduser('~')
@@ -247,15 +255,7 @@ class PreprocessSettingsDialog(QDialog):
         cam['width'] = int(self.sp_width.value())
         cam['height'] = int(self.sp_height.value())
         self._cfg['preprocess'] = self._collect_preprocess_cfg()
-        # save paths
-        paths = self._cfg.setdefault('paths', {})
-        snapshot_dir = self.le_snapshot_dir.text().strip()
-        if snapshot_dir:
-            try:
-                os.makedirs(snapshot_dir, exist_ok=True)
-            except Exception:
-                pass
-            paths['snapshot_dir'] = snapshot_dir
+        # 快照目录现在使用固定的默认路径，无需保存到配置
         self.accept()
 
 

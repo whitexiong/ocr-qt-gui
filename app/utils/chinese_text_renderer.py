@@ -3,8 +3,9 @@ import os
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPixmap, QPalette
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
 
 class ChineseTextRenderer:
     """中文文本渲染器，用于在图像上绘制中文文本"""
@@ -13,6 +14,22 @@ class ChineseTextRenderer:
         self.font_size = font_size
         self._font = None
         self._load_font()
+    
+    def _get_text_color(self):
+        """根据当前主题获取文字颜色"""
+        app = QApplication.instance()
+        if app is None:
+            return (0, 0, 0)  # 默认黑色
+        
+        # 获取当前调色板
+        palette = app.palette()
+        base_color = palette.color(QPalette.Base)
+        
+        # 判断是否为深色主题
+        is_dark = (0.2126 * base_color.redF() + 0.7152 * base_color.greenF() + 0.0722 * base_color.blueF()) < 0.5
+        
+        # 深色主题使用白色文字，浅色主题使用黑色文字
+        return (255, 255, 255) if is_dark else (0, 0, 0)
     
     def _load_font(self):
         """加载中文字体"""
@@ -82,12 +99,14 @@ class ChineseTextRenderer:
                 # 重新创建draw对象
                 draw = ImageDraw.Draw(pil_image)
                 
-                # 绘制文本
-                draw.text((x, y-30), text_with_score, font=self._font, fill=(0, 0, 0))
+                # 绘制文本，使用动态颜色
+                text_color = self._get_text_color()
+                draw.text((x, y-30), text_with_score, font=self._font, fill=text_color)
             except Exception as e:
                 print(f"绘制文本失败: {e}")
-                # 降级处理：只绘制文本，不绘制背景
-                draw.text((x, y-30), text_with_score, font=self._font, fill=(0, 255, 0))
+                # 降级处理：只绘制文本，不绘制背景，使用动态颜色
+                text_color = self._get_text_color()
+                draw.text((x, y-30), text_with_score, font=self._font, fill=text_color)
         
         # 将PIL图像转换回OpenCV格式
         return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem
-from PySide6.QtGui import QPixmap, QImage, QPainter, QPen, QColor, QFont, QPolygonF
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem, QApplication
+from PySide6.QtGui import QPixmap, QImage, QPainter, QPen, QColor, QFont, QPolygonF, QPalette
 from PySide6.QtCore import Qt, QRectF, Signal, QPointF
 from ...utils.chinese_text_renderer import get_chinese_text_renderer
 
@@ -26,6 +26,53 @@ class RoiGraphicsView(QGraphicsView):
         self._detection_boxes = []  # 存储检测框
         self._text_items = []  # 存储文本项
         self._chinese_renderer = get_chinese_text_renderer()
+        
+    def _get_text_color(self):
+        """根据当前主题获取文字颜色"""
+        app = QApplication.instance()
+        if app is None:
+            return QColor(255, 255, 255)  # 默认白色
+        
+        # 获取当前调色板
+        palette = app.palette()
+        base_color = palette.color(QPalette.Base)
+        
+        # 判断是否为深色主题
+        is_dark = (0.2126 * base_color.redF() + 0.7152 * base_color.greenF() + 0.0722 * base_color.blueF()) < 0.5
+        
+        # 深色主题使用白色文字，浅色主题使用黑色文字
+        return QColor(255, 255, 255) if is_dark else QColor(0, 0, 0)
+    
+    def refresh_text_colors(self):
+        """刷新所有文本项的颜色以适应主题变化"""
+        text_color = self._get_text_color()
+        color_str = f"rgb({text_color.red()}, {text_color.green()}, {text_color.blue()})"
+        
+        for text_item in self._text_items:
+            if text_item and text_item.scene() == self.scene:
+                # 更新默认文字颜色
+                text_item.setDefaultTextColor(text_color)
+                
+                # 获取当前HTML内容并更新颜色
+                current_html = text_item.toHtml()
+                # 简单的颜色替换，查找并替换color样式
+                import re
+                # 匹配color: rgb(r, g, b)模式
+                pattern = r'color:\s*rgb\([^)]+\)'
+                new_html = re.sub(pattern, f'color: {color_str}', current_html)
+                
+                # 如果没有找到color样式，则在style中添加
+                if 'color:' not in new_html:
+                    # 在style属性中添加color
+                    style_pattern = r'style="([^"]*)">'
+                    def add_color(match):
+                        existing_style = match.group(1)
+                        if existing_style and not existing_style.endswith(';'):
+                            existing_style += ';'
+                        return f'style="{existing_style} color: {color_str};">'
+                    new_html = re.sub(style_pattern, add_color, new_html)
+                
+                text_item.setHtml(new_html)
 
     def setImage(self, qimg: QImage):
         # disable placeholder when showing an image
@@ -220,10 +267,14 @@ class RoiGraphicsView(QGraphicsView):
                     # 设置中文字体
                     font = QFont("Microsoft YaHei", 12)
                     text_item.setFont(font)
-                    text_item.setDefaultTextColor(QColor(255, 255, 255))  # 白色文字
                     
-                    # 添加背景
-                    text_item.setHtml(f'<div style="background-color: rgba(0, 255, 0, 128); padding: 2px;">{text_with_score}</div>')
+                    # 根据主题动态设置文字颜色
+                    text_color = self._get_text_color()
+                    text_item.setDefaultTextColor(text_color)
+                    
+                    # 添加背景，文字颜色也要在HTML中设置
+                    color_str = f"rgb({text_color.red()}, {text_color.green()}, {text_color.blue()})"
+                    text_item.setHtml(f'<div style="background-color: rgba(0, 255, 0, 128); padding: 2px; color: {color_str};">{text_with_score}</div>')
                     
                     self.scene.addItem(text_item)
                     self._text_items.append(text_item)

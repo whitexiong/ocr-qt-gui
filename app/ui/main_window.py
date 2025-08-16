@@ -33,6 +33,9 @@ class MainWindow(QMainWindow):
     nextPage = Signal()
     prevPage = Signal()
     preprocessToggled = Signal(bool)
+    clearAllData = Signal()
+    deleteCurrentData = Signal(int)
+    realtimeOcrToggled = Signal(bool)
 
     def __init__(self):
         super().__init__()
@@ -68,6 +71,19 @@ class MainWindow(QMainWindow):
         # Global preprocess toggle
         self.act_toggle_preprocess = menu_view.addAction('启用预处理')
         self.act_toggle_preprocess.setCheckable(True)
+        
+        # 移除实时OCR检测功能（性能考虑）
+        # menu_view.addSeparator()
+        # self.act_realtime_ocr = menu_view.addAction('实时OCR检测')
+        # self.act_realtime_ocr.setCheckable(True)
+        # self.act_realtime_ocr.setChecked(False)
+        # self.act_realtime_ocr.toggled.connect(self._on_realtime_ocr_toggled)
+        
+        # 数据管理菜单
+        menu_data = QMenu('数据', self)
+        menubar.addMenu(menu_data)
+        self.act_clear_all = menu_data.addAction('清空所有数据')
+        self.act_clear_all.triggered.connect(self._on_clear_all_data)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -187,6 +203,8 @@ class MainWindow(QMainWindow):
 
     def apply_theme(self, mode: str):
         set_theme(mode, self)
+        # 刷新列表项显示以适应新主题
+        self.results.viewport().update()
         # notify controller if connected
         if hasattr(self, 'onThemeChangedCallback') and callable(self.onThemeChangedCallback):
             self.onThemeChangedCallback(mode)
@@ -214,6 +232,14 @@ class MainWindow(QMainWindow):
         # signal-like callback for controller
         if hasattr(self, 'onTogglePreprocess') and callable(self.onTogglePreprocess):
             self.onTogglePreprocess(bool(checked))
+    
+    def _on_clear_all_data(self):
+        """清空所有数据的回调"""
+        self.clearAllData.emit()
+    
+    # def _on_realtime_ocr_toggled(self, checked: bool):
+    #     """实时OCR检测开关回调"""
+    #     self.realtimeOcrToggled.emit(checked)
 
     # 已移除外部配置导入，改为菜单进入“预处理设置”对话框
 
@@ -348,6 +374,8 @@ class MainWindow(QMainWindow):
         act_view_rec = menu.addAction('查看处理图')
         act_view_orig = menu.addAction('查看原图')
         act_edit_text = menu.addAction('编辑识别文本')
+        menu.addSeparator()
+        act_delete_current = menu.addAction('删除当前数据')
         action = menu.exec(self.results.mapToGlobal(pos))
         if action == act_view_rec:
             # 设置当前项后，弹出查看处理图的对话框（由控制器处理）
@@ -365,6 +393,8 @@ class MainWindow(QMainWindow):
             self.showOriginal.emit()
         elif action == act_edit_text:
             self.editText.emit(rid)
+        elif action == act_delete_current:
+            self.deleteCurrentData.emit(rid)
 
     def _on_results_scrolled(self, value: int):
         if getattr(self, '_disable_scroll_trigger', False):

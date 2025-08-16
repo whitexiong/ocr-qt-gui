@@ -8,23 +8,36 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 hiddenimports = []
 # 只包含必要的模块，减少体积
-hiddenimports += ['app', 'app.core', 'app.controllers', 'app.services', 'app.ui', 'rapidocr', 'rapidocr.onnxruntime', 'rapidocr.utils', 'rapidocr.main', 'rapidocr.ch_ppocr_det', 'rapidocr.ch_ppocr_rec', 'rapidocr.ch_ppocr_cls']
+hiddenimports += [
+    'app', 'app.core', 'app.controllers', 'app.services', 'app.ui', 'app.utils',
+    'rapidocr', 'rapidocr.onnxruntime', 'rapidocr.utils', 'rapidocr.main',
+    'sqlalchemy.sql.default_comparator',
+    'jaraco.text', 'jaraco', 'jaraco.functools', 'jaraco.collections',
+    'pkg_resources', 'pkg_resources._vendor', 'pkg_resources.extern',
+    'setuptools', 'setuptools._vendor', 'setuptools.extern'
+]
 
 
 
 a = Analysis(['app/main.py'],
              pathex=['.'],
              binaries=[],
-             datas=[('lib/**', 'lib'),
-                    ('app/ui/**', 'app/ui'),
-                    ('app/core/**', 'app/core'),
-                    ('app/services/**', 'app/services'),
-                    ('app_data/**', 'app_data')] + collect_data_files('rapidocr'),
+             datas=[
+                 ('lib/models', 'lib/models'),
+             ] + collect_data_files('rapidocr'),
              hiddenimports=hiddenimports,
              hookspath=[],
              hooksconfig={},
              runtime_hooks=['rapidocr_runtime_hook.py'],
-             excludes=['matplotlib', 'numpy.tests', 'PIL.tests', 'paddle.tests', 'ppocr.tests', 'cv2.tests'],
+             excludes=[
+                 'matplotlib', 'tkinter', 'unittest', 'test', 'tests',
+                 'numpy.tests', 'PIL.tests', 'cv2.tests',
+                 'paddle', 'paddleocr', 'ppocr',
+                 'torch', 'tensorflow', 'sklearn',
+                 'jupyter', 'IPython', 'notebook',
+                 'sphinx', 'docutils',
+                 'websocket', 'websocket_client'
+             ],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher,
@@ -40,7 +53,7 @@ exe = EXE(pyz,
           bootloader_ignore_signals=False,
           strip=False,
           upx=False,
-          console=True)
+          console=False)
 coll = COLLECT(exe,
                a.binaries,
                a.zipfiles,
