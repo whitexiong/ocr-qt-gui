@@ -6,7 +6,7 @@ from typing import List, Tuple
 import cv2
 import numpy as np
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPixmap, QColor, QPainter, QPen
+from PySide6.QtGui import QImage, QPixmap, QColor, QPainter, QPen, QIcon
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from .fluent import PrimaryPushButton, PushButton
 from ..services.ocr_pipeline import OCRPipeline
+from ..core.config import get_resource_path
 
 
 def _to_qimage(bgr: np.ndarray) -> QImage:
@@ -38,6 +39,13 @@ class DebugDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('调试模式')
         self.resize(900, 680)
+        # Set dialog icon
+        try:
+            icon_path = get_resource_path('logo.png')
+            if os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+        except Exception:
+            pass
         self._cfg = cfg
         self._image_bgr = None
         self._boxes: List[List[Tuple[int,int]]] = []

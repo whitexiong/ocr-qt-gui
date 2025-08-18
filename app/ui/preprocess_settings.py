@@ -6,7 +6,7 @@ from typing import Optional
 
 import cv2
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from ..core.preprocess import apply_preprocess
 from .fluent import PrimaryPushButton, PushButton
+from ..core.config import get_resource_path
 
 
 class PreprocessSettingsDialog(QDialog):
@@ -33,6 +34,13 @@ class PreprocessSettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('预处理设置')
         self.resize(720, 560)
+        # Set dialog icon
+        try:
+            icon_path = get_resource_path('logo.png')
+            if os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+        except Exception:
+            pass
         self._cfg = cfg
         self._current_frame = current_frame
         self._build_ui()

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -13,10 +14,11 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QSizePolicy,
 )
-from PySide6.QtGui import QImage, QColor
+from PySide6.QtGui import QImage, QColor, QIcon, QPixmap
 from PySide6.QtCore import Qt, Signal, QEvent
 from .fluent import set_theme, set_accent_color, PrimaryPushButton, PushButton, ComboBox
 from .widgets import RoiGraphicsView, ResultItemDelegate
+from ..core.config import get_resource_path
 
  
 
@@ -41,6 +43,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle('OCR Camera')
         self.resize(1280, 800)
+        # Set window icon
+        try:
+            icon_path = get_resource_path('logo.png')
+            if os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+        except Exception:
+            pass
         # Apply custom Fluent-like style globally
         set_theme('auto')
         set_accent_color(QColor(0, 120, 215))
