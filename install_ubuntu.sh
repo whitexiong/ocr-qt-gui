@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OCR Camera 应用一键安装脚本 (Ubuntu)
-# 使用方法: curl -fsSL https://your-server.com/install_ubuntu.sh | bash
+# 使用方法: curl -fsSL https://raw.githubusercontent.com/whitexiong/ocr-qt-gui/master/install_ubuntu.sh | bash
 
 set -e
 
@@ -28,8 +28,8 @@ echo "创建应用目录: $APP_DIR"
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 
-# 下载应用包 (你需要将压缩包上传到服务器)
-DOWNLOAD_URL="https://your-server.com/OCRCamera.tar.gz"  # 替换为你的下载链接
+# 下载应用包
+DOWNLOAD_URL="https://github.com/whitexiong/ocr-qt-gui/releases/download/v1.0.0/OCRCamera.tar.gz"
 echo "下载应用包..."
 
 if command -v wget &> /dev/null; then

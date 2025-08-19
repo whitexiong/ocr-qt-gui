@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OCR Camera 快速安装器 - 最简版本
-# 使用方法: curl -fsSL https://your-server.com/quick_install.sh | bash
+# 使用方法: curl -fsSL https://raw.githubusercontent.com/whitexiong/ocr-qt-gui/master/quick_install.sh | bash
 
 echo "🚀 OCR Camera 快速安装中..."
 
@@ -9,9 +9,9 @@ echo "🚀 OCR Camera 快速安装中..."
 TEMP_DIR=$(mktemp -d)
 cd "$TEMP_DIR"
 
-# 下载并解压 (你需要替换为实际的下载链接)
+# 下载并解压
 echo "📦 下载应用..."
-curl -L -o ocr.tar.gz "https://your-server.com/OCRCamera.tar.gz"
+curl -L -o ocr.tar.gz "https://github.com/whitexiong/ocr-qt-gui/releases/download/v1.0.0/OCRCamera.tar.gz"
 
 echo "📂 解压应用..."
 tar -xzf ocr.tar.gz
