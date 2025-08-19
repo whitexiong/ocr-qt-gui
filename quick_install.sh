@@ -11,7 +11,7 @@ cd "$TEMP_DIR"
 
 # 下载并解压
 echo "📦 下载应用..."
-curl -L -o ocr.tar.gz "https://github.com/whitexiong/ocr-qt-gui/releases/download/v1.0.0/OCRCamera.tar.gz"
+curl -L -o ocr.tar.gz "https://github.com/whitexiong/ocr-qt-gui/releases/download/v1.0.1/OCRCamera.tar.gz"
 
 echo "📂 解压应用..."
 tar -xzf ocr.tar.gz

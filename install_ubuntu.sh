@@ -29,7 +29,7 @@ mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 
 # 下载应用包
-DOWNLOAD_URL="https://github.com/whitexiong/ocr-qt-gui/releases/download/v1.0.0/OCRCamera.tar.gz"
+DOWNLOAD_URL="https://github.com/whitexiong/ocr-qt-gui/releases/download/v1.0.1/OCRCamera.tar.gz"
 echo "下载应用包..."
 
 if command -v wget &> /dev/null; then
