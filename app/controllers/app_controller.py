@@ -137,20 +137,43 @@ class AppController:
                 self.ocr = None
     
     def get_chinese_font(self, size=20):
-        """获取中文字体"""
+        """获取中文字体（跨平台）"""
         try:
-            # 尝试使用系统字体
-            font_paths = [
-                "C:/Windows/Fonts/msyh.ttc",  # 微软雅黑
-                "C:/Windows/Fonts/simhei.ttf",  # 黑体
-                "C:/Windows/Fonts/simsun.ttc",  # 宋体
+            search_paths = []
+            root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+            project_fonts = [
+                os.path.join(root, 'assets', 'fonts', 'NotoSansSC-Regular.otf'),
+                os.path.join(root, 'assets', 'fonts', 'NotoSansSC-Regular.ttf'),
+                os.path.join(root, 'assets', 'fonts', 'msyh.ttc'),
             ]
-            
-            for font_path in font_paths:
+            search_paths.extend(project_fonts)
+
+            win_fonts = [
+                "C:/Windows/Fonts/msyh.ttc",
+                "C:/Windows/Fonts/simhei.ttf",
+                "C:/Windows/Fonts/simsun.ttc",
+                "C:/Windows/Fonts/msyh.ttf",
+            ]
+            search_paths.extend(win_fonts)
+
+            linux_fonts = [
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf",
+                "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf",
+                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+                "/usr/share/fonts/truetype/arphic/ukai.ttf",
+                "/usr/share/fonts/truetype/arphic/uming.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            ]
+            search_paths.extend(linux_fonts)
+
+            for font_path in search_paths:
                 if os.path.exists(font_path):
-                    return ImageFont.truetype(font_path, size)
-            
-            # 如果没有找到字体，使用默认字体
+                    try:
+                        return ImageFont.truetype(font_path, size)
+                    except Exception:
+                        continue
             return ImageFont.load_default()
         except Exception as e:
             print(f"字体加载失败: {e}")

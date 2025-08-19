@@ -24,15 +24,41 @@ class CameraWorker(QThread):
             raise ImportError('未检测到可用的 OpenCV (cv2) VideoCapture，请安装 opencv-python')
         devices = []
         for i in range(max_probe):
-            # Prefer DirectShow on Windows, fallback to any
+            # Choose backend based on platform
             try:
-                backend = getattr(cv2, 'CAP_DSHOW', None)
-                cap = cv2.VideoCapture(i, backend) if backend is not None else cv2.VideoCapture(i)
+                import platform
+                system = platform.system().lower()
+                
+                if system == 'windows':
+                    # Use DirectShow on Windows
+                    backend = getattr(cv2, 'CAP_DSHOW', None)
+                    cap = cv2.VideoCapture(i, backend) if backend is not None else cv2.VideoCapture(i)
+                elif system == 'linux':
+                    # Use V4L2 on Linux
+                    backend = getattr(cv2, 'CAP_V4L2', None)
+                    cap = cv2.VideoCapture(i, backend) if backend is not None else cv2.VideoCapture(i)
+                else:
+                    # Default backend for other systems
+                    cap = cv2.VideoCapture(i)
+                    
                 if cap is not None and cap.isOpened():
                     devices.append((i, f'Camera {i}'))
+            except Exception as e:
+                # Continue to next device if current one fails
+                continue
             finally:
                 if 'cap' in locals() and cap:
                     cap.release()
+        
+        # If no devices found, add a placeholder message
+        if not devices:
+            import platform
+            system = platform.system().lower()
+            if system == 'linux':
+                devices.append((-1, "无可用摄像头 (Docker环境限制)"))
+            else:
+                devices.append((-1, "无可用摄像头"))
+        
         return devices
 
     def configure(self, device_index: int, width: int, height: int):
@@ -46,8 +72,19 @@ class CameraWorker(QThread):
             if not hasattr(cv2, 'VideoCapture'):
                 self.error.emit('OpenCV (opencv-python) 未安装或不完整，无法打开相机')
                 return
-            backend = getattr(cv2, 'CAP_DSHOW', None)
-            self.cap = cv2.VideoCapture(self.device_index, backend) if backend is not None else cv2.VideoCapture(self.device_index)
+            
+            # Choose backend based on platform
+            import platform
+            system = platform.system().lower()
+            
+            if system == 'windows':
+                backend = getattr(cv2, 'CAP_DSHOW', None)
+                self.cap = cv2.VideoCapture(self.device_index, backend) if backend is not None else cv2.VideoCapture(self.device_index)
+            elif system == 'linux':
+                backend = getattr(cv2, 'CAP_V4L2', None)
+                self.cap = cv2.VideoCapture(self.device_index, backend) if backend is not None else cv2.VideoCapture(self.device_index)
+            else:
+                self.cap = cv2.VideoCapture(self.device_index)
             if not self.cap or not self.cap.isOpened():
                 self.error.emit('无法打开相机')
                 return

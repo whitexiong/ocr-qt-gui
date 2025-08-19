@@ -1,0 +1,50 @@
+services:
+  qt-app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: qt-ocr-app
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - QT_QPA_PLATFORM=xcb
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ../:/app
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+    working_dir: /app
+    command: bash docker/start_app.sh
+    stdin_open: true
+    tty: true
+    privileged: true
+
+  qt-app-windows:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: qt-ocr-app-win
+    environment:
+      - DISPLAY=host.docker.internal:0.0
+      - QT_X11_NO_MITSHM=1
+      - QT_QPA_PLATFORM=xcb
+    volumes:
+      - ../:/app
+      # Mount /dev to access USB devices shared via usbipd
+      - /dev:/dev
+    # Windows camera access via usbipd-win tool
+    # Prerequisites: Install usbipd-win and attach USB camera to WSL2
+    # Commands: usbipd list, usbipd attach --busid <BUSID> --wsl
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+    working_dir: /app
+    command: bash docker/start_app.sh
+    stdin_open: true
+    tty: true
+    privileged: true
+    # Enable access to host devices on Windows
+    network_mode: host

@@ -102,7 +102,16 @@ class MainWindow(QMainWindow):
 
         # Left: results list
         left = QVBoxLayout()
+        
+        # Camera device selection
+        camera_layout = QHBoxLayout()
+        camera_label = QLabel('摄像头设备:')
         self.cb_devices = ComboBox()
+        self.cb_devices.setMinimumWidth(200)
+        camera_layout.addWidget(camera_label)
+        camera_layout.addWidget(self.cb_devices)
+        camera_layout.addStretch()
+        left.addLayout(camera_layout)
 
         self.results = QListWidget()
         self.results.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)

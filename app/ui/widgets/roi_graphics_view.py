@@ -264,8 +264,9 @@ class RoiGraphicsView(QGraphicsView):
                     text_item = QGraphicsTextItem(text_with_score)
                     text_item.setPos(x, y - 30)  # 在检测框上方显示
                     
-                    # 设置中文字体
-                    font = QFont("Microsoft YaHei", 12)
+                    # 使用平台无关的字体或系统默认字体
+                    font = QFont()
+                    font.setPointSize(12)
                     text_item.setFont(font)
                     
                     # 根据主题动态设置文字颜色

@@ -32,20 +32,48 @@ class ChineseTextRenderer:
         return (255, 255, 255) if is_dark else (0, 0, 0)
     
     def _load_font(self):
-        """加载中文字体"""
+        """加载中文字体，支持Windows/Linux/Docker以及打包后的可执行环境"""
         try:
-            # 尝试使用系统字体
-            font_paths = [
+            search_paths = []
+            # 优先使用项目内置字体（若存在）
+            root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+            project_fonts = [
+                os.path.join(root, 'assets', 'fonts', 'NotoSansSC-Regular.otf'),
+                os.path.join(root, 'assets', 'fonts', 'NotoSansSC-Regular.ttf'),
+                os.path.join(root, 'assets', 'fonts', 'msyh.ttc'),
+            ]
+            search_paths.extend(project_fonts)
+
+            # Windows 系统字体
+            win_fonts = [
                 "C:/Windows/Fonts/msyh.ttc",  # 微软雅黑
                 "C:/Windows/Fonts/simhei.ttf",  # 黑体
                 "C:/Windows/Fonts/simsun.ttc",  # 宋体
+                "C:/Windows/Fonts/msyh.ttf",
             ]
-            
-            for font_path in font_paths:
+            search_paths.extend(win_fonts)
+
+            # Linux 常见中文字体（包含Docker场景）
+            linux_fonts = [
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf",
+                "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf",
+                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+                "/usr/share/fonts/truetype/arphic/ukai.ttf",
+                "/usr/share/fonts/truetype/arphic/uming.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # 兜底
+            ]
+            search_paths.extend(linux_fonts)
+
+            for font_path in search_paths:
                 if os.path.exists(font_path):
-                    self._font = ImageFont.truetype(font_path, self.font_size)
-                    return
-            
+                    try:
+                        self._font = ImageFont.truetype(font_path, self.font_size)
+                        return
+                    except Exception:
+                        continue
+
             # 如果没有找到字体，使用默认字体
             self._font = ImageFont.load_default()
         except Exception as e:
