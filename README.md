@@ -98,24 +98,36 @@ docker build -t qt-ocr-app -f Dockerfile ..
 
 ```bash
 # 使用 docker-compose 启动（推荐）
-docker-compose up -d qt-app-windows  # Windows 环境
-docker-compose up -d qt-app          # Linux 环境
 
-# 或者直接运行容器
-docker run -d --name qt-ocr-app \
+# Windows 环境（支持摄像头，需要先配置 usbipd）
+docker-compose up -d qt-app-windows
+
+# Linux 环境
+docker-compose up -d qt-app
+
+# 或者直接运行容器（Windows）
+docker run -d --name qt-ocr-app-win \
   -e DISPLAY=host.docker.internal:0.0 \
   -e QT_X11_NO_MITSHM=1 \
   -e QT_QPA_PLATFORM=xcb \
   -v "$(pwd)/../:/app" \
+  -v /dev:/dev \
+  --device=/dev/video0:/dev/video0 \
   --privileged \
+  --network=host \
   qt-ocr-app
 ```
+
+**注意**：Windows 环境下的摄像头支持需要：
+1. 先按照上述步骤配置 usbipd-win
+2. 确保摄像头设备已附加到 WSL2
+3. 使用 `qt-app-windows` 服务启动容器
 
 **进入容器**
 
 ```bash
 # 进入运行中的容器
-docker exec -it qt-ocr-app bash
+docker exec -it [ID] bash
 
 # 或者启动一个新的交互式容器
 docker run -it --rm \
@@ -133,7 +145,7 @@ cd /app
 rm -rf build/ dist/
 
 # 使用 PyInstaller 打包
-python -m PyInstaller qt_ocr_app.spec --clean --noconfirm
+python3 -m PyInstaller qt_ocr_app.spec --clean --noconfirm
 
 # 打包完成后，可执行文件位于 dist/OCRCamera/ 目录
 ```
@@ -147,6 +159,34 @@ DISPLAY=host.docker.internal:0.0 ./dist/OCRCamera/OCRCamera
 
 # 或者使用启动脚本
 bash docker/start_app.sh
+```
+
+## 打包压缩
+
+```bash
+docker exec -it qt-ocr-app-win bash -c "cd /app && tar -czf OCRCamera.tar.gz -C dist OCRCamera" 
+```
+
+**Windows 摄像头配置（可选）**
+
+如果需要在 Docker 容器中使用摄像头，需要先配置 usbipd：
+
+```powershell
+# 1. 安装 usbipd-win
+winget install usbipd
+
+# 2. 以管理员身份查看 USB 设备
+usbipd list
+
+# 3. 绑定摄像头设备（替换 <BUSID> 为实际的设备 ID）
+usbipd bind --busid <BUSID>
+
+# 4. 附加设备到 WSL2
+usbipd attach --busid <BUSID> --wsl
+
+# 5. 验证设备（在 WSL2 中）
+wsl
+ls /dev/video*
 ```
 
 **X11 服务器设置（Windows）**
@@ -221,12 +261,68 @@ pyinstaller qt_ocr_app.spec
 
 **问题**：在 Docker 容器中无法访问摄像头设备
 
-**原因**：Windows Docker Desktop 不支持直接访问主机摄像头设备
+**原因**：Windows Docker Desktop 需要通过 WSL2 和 usbipd 工具来访问 USB 摄像头设备 <mcreference link="https://github.com/microsoft/WSL/discussions/11230" index="1">1</mcreference> <mcreference link="https://github.com/docker/for-win/issues/13940" index="2">2</mcreference>
 
 **解决方案**：
+
+**方法一：使用 usbipd-win 工具（推荐）**
+
+1. **安装 usbipd-win**：
+   ```powershell
+   # 使用 winget 安装
+   winget install usbipd
+   
+   # 或从 GitHub 下载安装包
+   # https://github.com/dorssel/usbipd-win/releases
+   ```
+
+2. **查看可用的 USB 设备**：
+   ```powershell
+   # 以管理员身份运行 PowerShell
+   usbipd list
+   ```
+
+3. **绑定摄像头设备**：
+   ```powershell
+   # 绑定设备（需要管理员权限，只需执行一次）
+   usbipd bind --busid <BUSID>
+   
+   # 例如：usbipd bind --busid 2-2
+   ```
+
+4. **附加设备到 WSL2**：
+   ```powershell
+   # 附加设备到 WSL2
+   usbipd attach --busid <BUSID> --wsl
+   
+   # 例如：usbipd attach --busid 2-2 --wsl
+   ```
+
+5. **验证设备可用性**：
+   ```bash
+   # 在 WSL2 中检查设备
+   wsl
+   ls /dev/video*
+   lsusb
+   ```
+
+6. **启动 Docker 容器**：
+   ```bash
+   # 使用 Windows 配置启动容器
+   docker-compose up qt-app-windows
+   ```
+
+**方法二：本地环境（备选方案）**
+
+如果 usbipd 配置复杂，推荐直接在 Windows 本地环境下使用：
 1. 应用会显示"无可用摄像头 (Docker环境限制)"提示
-2. 推荐在 Windows 本地环境下使用摄像头功能
+2. 使用本地 Python 环境运行应用
 3. Docker 环境主要用于开发和测试 OCR 功能
+
+**注意事项**：
+- usbipd 需要 Windows 10/11 和 WSL2 支持 <mcreference link="https://github.com/dorssel/usbipd-win/issues/353" index="4">4</mcreference>
+- 某些摄像头可能需要在 WSL2 中安装特定驱动程序 <mcreference link="https://github.com/microsoft/WSL/discussions/11960" index="5">5</mcreference>
+- 重启计算机后需要重新执行 `usbipd attach` 命令
 
 ### X11 显示问题
 
