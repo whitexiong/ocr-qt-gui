@@ -46,8 +46,23 @@ echo "解压应用..."
 tar -xzf OCRCamera.tar.gz
 rm OCRCamera.tar.gz
 
+# 下载运行脚本
+echo "下载运行脚本..."
+cd OCRCamera
+if command -v wget &> /dev/null; then
+    wget -O run_ocr_ubuntu.sh "https://raw.githubusercontent.com/whitexiong/ocr-qt-gui/master/run_ocr_ubuntu.sh"
+elif command -v curl &> /dev/null; then
+    curl -L -o run_ocr_ubuntu.sh "https://raw.githubusercontent.com/whitexiong/ocr-qt-gui/master/run_ocr_ubuntu.sh"
+else
+    echo "警告: 无法下载运行脚本，将直接使用可执行文件"
+fi
+
 # 设置执行权限
-chmod +x OCRCamera/OCRCamera
+chmod +x OCRCamera
+if [ -f "run_ocr_ubuntu.sh" ]; then
+    chmod +x run_ocr_ubuntu.sh
+fi
+cd ..
 
 # 创建桌面快捷方式
 DESKTOP_FILE="$HOME/Desktop/OCRCamera.desktop"
