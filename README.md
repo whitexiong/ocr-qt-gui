@@ -41,12 +41,45 @@ qt_ocr_app/
 
 ## 快速开始
 
-### 方法一：使用预编译的 Linux 可执行文件（推荐）
+### GitHub仓库
+
+项目已发布到GitHub: https://github.com/whitexiong/ocr-qt-gui
+
+### Ubuntu系统快速安装
+
+#### 方式1: 在线一键安装（推荐）
+```bash
+curl -fsSL https://raw.githubusercontent.com/whitexiong/ocr-qt-gui/master/install_ubuntu.sh | bash
+```
+
+#### 方式2: 快速安装
+```bash
+wget https://raw.githubusercontent.com/whitexiong/ocr-qt-gui/master/quick_install.sh
+chmod +x quick_install.sh
+./quick_install.sh
+```
+
+#### 方式3: 手动安装
+1. 从 [GitHub Releases](https://github.com/whitexiong/ocr-qt-gui/releases) 下载 `OCRCamera.tar.gz`
+2. 解压并运行：
+
+```bash
+tar -xzf OCRCamera.tar.gz
+cd OCRCamera
+./run_ocr_ubuntu.sh
+```
+
+### 传统方式（开发环境）
 
 **适用于 Ubuntu/Debian 系统**
 
-1. 下载项目并进入目录
-2. 运行一键安装脚本：
+1. 克隆项目：
+```bash
+git clone https://github.com/whitexiong/ocr-qt-gui.git
+cd ocr-qt-gui
+```
+
+2. 运行安装脚本：
 
 ```bash
 bash install_ubuntu.sh
